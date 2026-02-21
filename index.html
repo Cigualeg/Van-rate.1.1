@@ -1,0 +1,2438 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="UTF-8">
+<link rel="manifest" href="manifest.json">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="apple-mobile-web-app-title" content="VanRate Pro">
+<meta name="theme-color" content="#0e1628">
+<link rel="apple-touch-icon" href="icon-192.png">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0">
+<meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate">
+<meta http-equiv="Pragma" content="no-cache">
+<meta http-equiv="Expires" content="0">
+<title>VanRate Pro v6.0</title>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/react/18.2.0/umd/react.production.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/react-dom/18.2.0/umd/react-dom.production.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/babel-standalone/7.23.2/babel.min.js"></script>
+<style>
+* { margin:0; padding:0; box-sizing:border-box; -webkit-tap-highlight-color:transparent; }
+body { background:#080c14; color:#c8d0e8; font-family:'Segoe UI',system-ui,sans-serif; }
+input, select, button { font-family:inherit; }
+select option { background:#0e1220; }
+::-webkit-scrollbar { width:4px; }
+::-webkit-scrollbar-track { background:#0e1220; }
+::-webkit-scrollbar-thumb { background:#1e2438; border-radius:2px; }
+@keyframes spin { to { transform:rotate(360deg); } }
+@keyframes fadeUp { from { opacity:0; transform:translateY(10px); } to { opacity:1; transform:translateY(0); } }
+.fade-up { animation: fadeUp 0.35s ease forwards; }
+</style>
+</head>
+<body>
+<div id="root"></div>
+
+<script type="text/babel">
+const { useState, useEffect, useRef } = React;
+
+// ═══════════════════════════════════════════════════════
+// i18n — BILINGUAL STRINGS (ES / EN)
+// ═══════════════════════════════════════════════════════
+const STRINGS = {
+  es: {
+    // Header
+    tagOwner: "OWNER-OP · MC",
+    tagHot: "🔥 HOTSCORE",
+    tagVersion: "VANRATE PRO",
+    subtitle: "Cargo Van Rate Advisor",
+    regionLine: "IL · IN · OH · MI · PA · WI · KY · TN · MO · MN · GA · MD · MA · NY · CT · NJ · NH · VT · ME · RI",
+    // Route section
+    sectionRoute: "Ruta",
+    labelPickup: "📍 Recogida",
+    labelDelivery: "🏁 Entrega",
+    labelMiles: "📏 Millas",
+    labelDay: "📅 Día",
+    placeholderPickup: "Chicago, IL",
+    placeholderDelivery: "Columbus, OH",
+    placeholderMiles: "300",
+    placeholderDay: "-- Día --",
+    // Operation section
+    sectionOp: "Operación",
+    labelMC: "💼 MC % (comisión)",
+    labelDeadhead: "🔄 Deadhead (millas)",
+    labelCostPerMi: "⚙️ Costo all-in ($/mi)",
+    mcTypical: "típico: 18–20%",
+    costNote: "combustible + seguro + mantenimiento · típico: $0.55–$0.75/mi",
+    totalFormula: "Total = (trip + deadhead) × $",
+    perMi: "/mi",
+    deadheadCost: "costo:",
+    // MC note
+    mcNote: "Owner-Op bajo MC ajeno:",
+    mcNoteText: "Tarifas = bruto al broker.",
+    mcNoteNet: "Neto = Bruto − MC% − Costos operativos",
+    // Buttons
+    btnAnalyze: "▶  ANALIZAR RUTA",
+    btnAnalyzing: "CALCULANDO...",
+    // Errors
+    errOrigin: "Ingresa ciudad de recogida.",
+    errDest: "Ingresa ciudad de entrega.",
+    errMiles: "Ingresa las millas del viaje.",
+    errDay: "Selecciona el día.",
+    errGeocode: "No se pudo analizar. Verifica los nombres de las ciudades.",
+    // Zone section
+    sectionZones: "HotScore — Análisis de Zonas",
+    labelOrigin: "ORIGEN",
+    labelDest: "DESTINO",
+    withinRadius: "✓ Dentro del radio",
+    outsideRadius: "fuera del radio",
+    toGoodZone: mi => `🚗 ${mi}mi distancia total al punto bueno`,
+    toGoodZoneHub: name => `→ ${name}`,
+    mpfLabel: "MARKET PRESSURE FACTOR",
+    // Calc steps
+    sectionCalc: "Cálculo Paso a Paso",
+    calcTable: "Tabla",
+    calcRange: "Range",
+    calcExc: "Excelente",
+    calcGood: "Bueno",
+    calcMin: "Mínimo",
+    calcDay: "× redondeo $25 + orden Min≤Bueno≤Exc",
+    calcFinal: "Final bruto:",
+    calcCost: "Costo",
+    calcNet: "Neto = Bruto − MC(",
+    remoteZoneLabel: "🌵 FUERA DE RADIO — RECARGO POR MILLA",
+    remoteZoneFloor: (extra, sMin, sGood, sExc) => `+${extra}mi × $0.50/$0.75/$1.00 → +$${sMin} / +$${sGood} / +$${sExc}`,
+    // Verdict
+    sectionVerdict: "Veredicto",
+    verdictAccept: "CARGA RENTABLE",
+    verdictCaution: "CARGA MARGINAL",
+    verdictReject: "CARGA RIESGOSA",
+    verdictMsgAccept: (good, netGood, cost, margin) => `Tu precio de salida ${good} bruto → ${netGood} neto cubre costos con margen de ${margin}%.`,
+    verdictMsgCaution: (min, netMin, cost) => `Margen ajustado. No bajes de ${min} bruto (neto: ${netMin}).`,
+    verdictMsgReject: (exc, netExc) => `Neto insuficiente. Solo acepta urgente a ${exc} bruto (neto: ${netExc}).`,
+    // Rate cards
+    sectionRates: "Tarifas al Broker (BRUTO)",
+    rateExcLabel: "⚡ EXCELENTE",
+    rateExcSub: "Expedite urgente / mismo día",
+    rateGoodLabel: "✅ BUENO",
+    rateGoodSub: "Precio de salida — aceptar sin dudar",
+    rateMinLabel: "🟡 MÍNIMO",
+    rateMinSub: "Piso absoluto — no negociar debajo",
+    rpmBrutoLabel: "$/mi bruto",
+    rpmNetoLabel: "$/mi neto",
+    margenLabel: "margen",
+    grossLabel: "BRUTO",
+    netLabel: "neto",
+    mcFeeLabel: "MC:",
+    withDH:   "Con Deadhead",
+    withoutDH: "Sin Deadhead",
+    // Costs
+    sectionCosts: "Tus Costos del Viaje",
+    costFuel: "⛽ Combustible (referencia)",
+    costFuelSub: "solo informativo, ya incluido en $0.64/mi",
+    costTrip: "⚙️ Millas trip",
+    costTripSub: "millas del viaje cargado",
+    costDH: "🔄 Deadhead",
+    costDHSub: "ingresado manualmente",
+    costDHNone: "sin deadhead ingresado",
+    costTotal: "📊 COSTO TOTAL",
+    costTotalSub: "operativo + deadhead",
+    // Repo
+    sectionRepo: "Reposicionamiento Sugerido",
+    repoOriginWeak: "Origen débil",
+    repoOriginTip: "Hubs a menos de 150mi:",
+    repoDestWeak: "Destino débil",
+    repoDestTip: "Planifica tu salida:",
+    repoMiles: "millas",
+    // Weather
+    sectionWeather: "🌦 Weather Along Route",
+    wxDate: "📅 Fecha del Viaje",
+    wxTime: "🕐 Hora Salida (opc.)",
+    wxRoute: "Ruta:",
+    wxBtn: "🌤 CHECK WEATHER ALONG ROUTE",
+    wxBtnLoading: "ANALIZANDO...",
+    wxStepRoute: "Calculando ruta...",
+    wxStepSample: "Muestreando ruta...",
+    wxStepForecast: pts => `Obteniendo pronóstico (${pts} pts)...`,
+    wxErrCities: "Primero ingresa ciudades de origen y destino arriba.",
+    wxErrDate: "Selecciona una fecha para el viaje.",
+    wxErrGeneral: "Error al obtener pronóstico. Intenta de nuevo.",
+    wxOverall: "OVERALL RECOMMENDATION",
+    wxOK: "OK TO DRIVE",
+    wxCaution: "CAUTION",
+    wxAvoid: "AVOID / DELAY",
+    wxGlobal: "Global Risk Score:",
+    wxRiesgo: "RIESGO POR ESTADO",
+    wxPts: "pts",
+    wxAlerts: "ALERT",
+    wxAlertS: "ALERTS",
+    wxNoData: "⚠️ No forecast data — date may be outside 16-day window or API timeout",
+    wxNoRisk: "✓ No significant weather risks",
+    wxLegend: "RISK SCORE LEGEND",
+    wxLegendOK: "OK",
+    wxLegendMon: "Monitor",
+    wxLegendCau: "Caution",
+    wxLegendAvo: "Avoid",
+    wxFooter: pts => `Claude AI (pronóstico + alertas) · Cache 6h · ${pts} puntos`,
+    // ZIP / geocoding
+    placeholderOrigin: "Ciudad, Estado o ZIP",
+    placeholderDest:   "Ciudad, Estado o ZIP",
+    labelCurrentLoc:   "📍 Mi Ubicación Actual",
+    placeholderCurrent:"Ciudad, Estado o ZIP",
+    gpsBtn:            "GPS",
+    autoMiles:         mi => `✓ ${mi}mi calculadas automáticamente`,
+    autoDH:            mi => `✓ ${mi}mi deadhead calculadas`,
+    geocoding:         "Geocodificando...",
+    geocodeAmbiguous:  "Múltiples resultados — elige uno:",
+    geocodeOK:         loc => `✓ ${loc}`,
+    geocodeErr:        "No se encontró esa ubicación. Intenta de nuevo.",
+    zipInvalid:        "ZIP debe ser 5 dígitos.",
+    // Rest areas en ruta
+    sectionRest:       "🛑 Rest Areas en Ruta",
+    restLoading:       "Buscando rest areas...",
+    restNone:          "No se encontraron rest areas en esta ruta.",
+    restClosestDest:   "📍 Más cercano al destino",
+    restClosestRoute:  "🛣️ Más cercano a la ruta",
+    restMiFromDest:    "mi del destino",
+    restOffRoute:      "mi fuera de ruta",
+    restAmenities:     "Servicios:",
+    restName:          "Rest Area",
+    // Rest Area Finder (por ZIP)
+    sectionFinder:     "🗺️ Rest Area Finder",
+    finderZipLabel:    "📍 Tu ZIP o Ciudad",
+    finderZipPlaceholder: "ZIP o ciudad...",
+    finderRadiusLabel: "Radio (millas)",
+    finderBtn:         "🔍 BUSCAR",
+    finderLoading:     "Buscando cerca de ti...",
+    finderNone:        "No se encontraron resultados.",
+    finderStateTag:    "ESTATAL",
+    finderPrivateTag:  "PRIVADO",
+    finderCommercial:  "🏪 Comercios cercanos",
+    finderRestAreas:   "🛑 Rest Areas",
+    // Top risk
+    wxTopRisk: "🔥 TOP TRAMOS MÁS RIESGOSOS",
+    wxMile: "Milla",
+    // Days (needed for day selector)
+    days: { "0":"Domingo","1":"Lunes","2":"Martes","3":"Miércoles","4":"Jueves","5":"Viernes","6":"Sábado" },
+  },
+  en: {
+    tagOwner: "OWNER-OP · MC",
+    tagHot: "🔥 HOTSCORE",
+    tagVersion: "VANRATE PRO",
+    subtitle: "Cargo Van Rate Advisor",
+    regionLine: "IL · IN · OH · MI · PA · WI · KY · TN · MO · MN · GA · MD · MA · NY · CT · NJ · NH · VT · ME · RI",
+    sectionRoute: "Route",
+    labelPickup: "📍 Pickup",
+    labelDelivery: "🏁 Delivery",
+    labelMiles: "📏 Miles",
+    labelDay: "📅 Day",
+    placeholderPickup: "Chicago, IL",
+    placeholderDelivery: "Columbus, OH",
+    placeholderMiles: "300",
+    placeholderDay: "-- Day --",
+    sectionOp: "Operation",
+    labelMC: "💼 MC % (commission)",
+    labelDeadhead: "🔄 Deadhead (miles)",
+    labelCostPerMi: "⚙️ All-in cost ($/mi)",
+    mcTypical: "typical: 18–20%",
+    costNote: "fuel + insurance + maintenance · typical: $0.55–$0.75/mi",
+    totalFormula: "Total = (trip + deadhead) × $",
+    perMi: "/mi",
+    deadheadCost: "cost:",
+    mcNote: "Owner-Op under carrier MC:",
+    mcNoteText: "Rates = gross quoted to broker.",
+    mcNoteNet: "Net = Gross − MC% − Operating costs",
+    btnAnalyze: "▶  ANALYZE ROUTE",
+    btnAnalyzing: "CALCULATING...",
+    errOrigin: "Enter pickup city.",
+    errDest: "Enter delivery city.",
+    errMiles: "Enter trip miles.",
+    errDay: "Select a day.",
+    errGeocode: "Could not analyze. Check city names and try again.",
+    sectionZones: "HotScore — Zone Analysis",
+    labelOrigin: "ORIGIN",
+    labelDest: "DESTINATION",
+    withinRadius: "✓ Within radius",
+    outsideRadius: "outside radius",
+    toGoodZone: mi => `🚗 ${mi}mi total to good zone`,
+    toGoodZoneHub: name => `→ ${name}`,
+    mpfLabel: "MARKET PRESSURE FACTOR",
+    sectionCalc: "Step-by-Step Calculation",
+    calcTable: "Table",
+    calcRange: "Range",
+    calcExc: "Excellent",
+    calcGood: "Good",
+    calcMin: "Minimum",
+    calcDay: "× round to $25 + enforce Min≤Good≤Exc",
+    calcFinal: "Final gross:",
+    calcCost: "Cost",
+    calcNet: "Net = Gross − MC(",
+    remoteZoneLabel: "🌵 OUTSIDE RADIUS — SURCHARGE/MI",
+    remoteZoneFloor: (extra, sMin, sGood, sExc) => `+${extra}mi × $0.50/$0.75/$1.00 → +$${sMin} / +$${sGood} / +$${sExc}`,
+    sectionVerdict: "Verdict",
+    verdictAccept: "PROFITABLE LOAD",
+    verdictCaution: "MARGINAL LOAD",
+    verdictReject: "RISKY LOAD",
+    verdictMsgAccept: (good, netGood, cost, margin) => `Your opening price ${good} gross → ${netGood} net covers costs with ${margin}% margin.`,
+    verdictMsgCaution: (min, netMin, cost) => `Tight margin. Don't go below ${min} gross (net: ${netMin}).`,
+    verdictMsgReject: (exc, netExc) => `Net barely covers costs. Only accept urgent at ${exc} gross (net: ${netExc}).`,
+    sectionRates: "Rates to Broker (GROSS)",
+    rateExcLabel: "⚡ EXCELLENT",
+    rateExcSub: "Urgent expedite / same day",
+    rateGoodLabel: "✅ GOOD",
+    rateGoodSub: "Opening price — accept without hesitation",
+    rateMinLabel: "🟡 MINIMUM",
+    rateMinSub: "Absolute floor — do not negotiate below",
+    rpmBrutoLabel: "$/mi gross",
+    rpmNetoLabel: "$/mi net",
+    margenLabel: "margin",
+    grossLabel: "GROSS",
+    netLabel: "net",
+    mcFeeLabel: "MC:",
+    withDH:   "With Deadhead",
+    withoutDH: "No Deadhead",
+    sectionCosts: "Your Trip Costs",
+    costFuel: "⛽ Fuel (reference)",
+    costFuelSub: "informational only, already included in $/mi rate",
+    costTrip: "⚙️ Trip miles",
+    costTripSub: "loaded trip miles",
+    costDH: "🔄 Deadhead",
+    costDHSub: "entered manually",
+    costDHNone: "no deadhead entered",
+    costTotal: "📊 TOTAL COST",
+    costTotalSub: "operating + deadhead",
+    sectionRepo: "Repositioning Suggestions",
+    repoOriginWeak: "Weak origin",
+    repoOriginTip: "Hubs within 150mi:",
+    repoDestWeak: "Weak destination",
+    repoDestTip: "Plan your exit:",
+    repoMiles: "miles",
+    sectionWeather: "🌦 Weather Along Route",
+    wxDate: "📅 Trip Date",
+    wxTime: "🕐 Departure Time (opt.)",
+    wxRoute: "Route:",
+    wxBtn: "🌤 CHECK WEATHER ALONG ROUTE",
+    wxBtnLoading: "ANALYZING...",
+    wxStepRoute: "Calculating route...",
+    wxStepSample: "Sampling route...",
+    wxStepForecast: pts => `Getting forecast (${pts} pts)...`,
+    wxErrCities: "First enter origin and destination cities above.",
+    wxErrDate: "Select a trip date.",
+    wxErrGeneral: "Error fetching forecast. Please try again.",
+    wxOverall: "OVERALL RECOMMENDATION",
+    wxOK: "OK TO DRIVE",
+    wxCaution: "CAUTION",
+    wxAvoid: "AVOID / DELAY",
+    wxGlobal: "Global Risk Score:",
+    wxRiesgo: "RISK BY STATE",
+    wxPts: "pts",
+    wxAlerts: "ALERT",
+    wxAlertS: "ALERTS",
+    wxNoData: "⚠️ No forecast data — date may be outside 16-day window or API timeout",
+    wxNoRisk: "✓ No significant weather risks",
+    wxLegend: "RISK SCORE LEGEND",
+    wxLegendOK: "OK",
+    wxLegendMon: "Monitor",
+    wxLegendCau: "Caution",
+    wxLegendAvo: "Avoid",
+    wxFooter: pts => `Claude AI (forecast + alerts) · Cache 6h · ${pts} points`,
+    days: { "0":"Sunday","1":"Monday","2":"Tuesday","3":"Wednesday","4":"Thursday","5":"Friday","6":"Saturday" },
+    wxTopRisk: "🔥 TOP RISKIEST SEGMENTS",
+    wxMile: "Mile",
+    // ZIP / geocoding
+    placeholderOrigin: "City, State or ZIP",
+    placeholderDest:   "City, State or ZIP",
+    labelCurrentLoc:   "📍 My Current Location",
+    placeholderCurrent:"City, State or ZIP",
+    gpsBtn:            "GPS",
+    autoMiles:         mi => `✓ ${mi}mi auto-calculated`,
+    autoDH:            mi => `✓ ${mi}mi deadhead auto-calculated`,
+    geocoding:         "Geocoding...",
+    geocodeAmbiguous:  "Multiple results — pick one:",
+    geocodeOK:         loc => `✓ ${loc}`,
+    geocodeErr:        "Location not found. Try again.",
+    zipInvalid:        "ZIP must be 5 digits.",
+    // Rest areas
+    sectionRest:       "🛑 Rest Areas Along Route",
+    restLoading:       "Searching rest areas...",
+    restNone:          "No rest areas found along this route.",
+    restClosestDest:   "📍 Closest to Destination",
+    restClosestRoute:  "🛣️ Closest to Route",
+    restMiFromDest:    "mi from destination",
+    restOffRoute:      "mi off route",
+    restAmenities:     "Amenities:",
+    restName:          "Rest Area",
+    // Rest Area Finder (by ZIP)
+    sectionFinder:     "🗺️ Rest Area Finder",
+    finderZipLabel:    "📍 Your ZIP or City",
+    finderZipPlaceholder: "ZIP or city...",
+    finderRadiusLabel: "Radius (miles)",
+    finderBtn:         "🔍 SEARCH",
+    finderLoading:     "Searching near you...",
+    finderNone:        "No results found.",
+    finderStateTag:    "STATE",
+    finderPrivateTag:  "PRIVATE",
+    finderCommercial:  "🏪 Nearby Businesses",
+    finderRestAreas:   "🛑 Rest Areas",
+  }
+};
+
+// ═══════════════════════════════════════════════════════
+// DATA
+// ═══════════════════════════════════════════════════════
+const HUBS = [
+  { name:"Chicago, IL",            lat:41.8781, lon:-87.6298, score:92, radius:70 },
+  { name:"Indianapolis, IN",       lat:39.7684, lon:-86.1581, score:89, radius:60 },
+  { name:"Columbus, OH",           lat:39.9612, lon:-82.9988, score:88, radius:60 },
+  { name:"Louisville, KY",         lat:38.2527, lon:-85.7585, score:87, radius:55 },
+  { name:"Detroit, MI",            lat:42.3314, lon:-83.0458, score:86, radius:60 },
+  { name:"Boston, MA",             lat:42.3601, lon:-71.0589, score:86, radius:65 },
+  { name:"Minneapolis, MN",        lat:44.9778, lon:-93.2650, score:84, radius:65 },
+  { name:"Nashville, TN",          lat:36.1627, lon:-86.7816, score:82, radius:55 },
+  { name:"Kansas City, MO",        lat:39.0997, lon:-94.5786, score:82, radius:60 },
+  { name:"New York, NY",           lat:40.7128, lon:-74.0060, score:82, radius:55 },
+  { name:"Cleveland, OH",          lat:41.4993, lon:-81.6944, score:81, radius:50 },
+  { name:"St. Louis, MO",          lat:38.6270, lon:-90.1994, score:81, radius:60 },
+  { name:"Philadelphia, PA",       lat:39.9526, lon:-75.1652, score:79, radius:55 },
+  { name:"Pittsburgh, PA",         lat:40.4406, lon:-79.9959, score:78, radius:55 },
+  { name:"Hartford, CT",           lat:41.7658, lon:-72.6851, score:77, radius:45 },
+  { name:"Cincinnati, OH",         lat:39.1031, lon:-84.5120, score:77, radius:50 },
+  { name:"Providence, RI",         lat:41.8240, lon:-71.4128, score:76, radius:40 },
+  { name:"Milwaukee, WI",          lat:43.0389, lon:-87.9065, score:76, radius:50 },
+  { name:"Atlanta, GA",            lat:33.7490, lon:-84.3880, score:76, radius:70 },
+  { name:"Albany, NY",             lat:42.6526, lon:-73.7562, score:74, radius:45 },
+  { name:"Grand Rapids, MI",       lat:42.9634, lon:-85.6681, score:75, radius:45 },
+  { name:"Harrisburg, PA",         lat:40.2732, lon:-76.8867, score:72, radius:45 },
+  { name:"Manchester, NH",         lat:42.9956, lon:-71.4548, score:71, radius:40 },
+  { name:"Toledo, OH",             lat:41.6639, lon:-83.5552, score:70, radius:45 },
+  { name:"Burlington, VT",         lat:44.4759, lon:-73.2121, score:68, radius:40 },
+  { name:"Lansing, MI",            lat:42.7325, lon:-84.5555, score:69, radius:40 },
+  { name:"Springfield, MO",        lat:37.2153, lon:-93.2982, score:66, radius:45 },
+  { name:"Portland, ME",           lat:43.6591, lon:-70.2568, score:65, radius:45 },
+];
+
+const RATE_TABLE = [
+  { miles:100, low:225, high:300 },
+  { miles:150, low:300, high:350 },
+  { miles:200, low:325, high:400 },
+  { miles:250, low:350, high:425 },
+  { miles:300, low:400, high:500 },
+  { miles:400, low:450, high:525 },
+  { miles:500, low:550, high:625 },
+  { miles:600, low:600, high:650 },
+  { miles:700, low:700, high:750 },
+  { miles:800, low:700, high:900 },
+];
+
+const MPF_MATRIX = {
+  good:    { good:0.65, regular:0.80, bad:1.00 },
+  regular: { good:0.40, regular:0.55, bad:0.85 },
+  bad:     { good:0.20, regular:0.35, bad:0.95 },
+};
+
+const DAY_FACTORS = {
+  "0":{ name:"Domingo",   f:1.20 },
+  "1":{ name:"Lunes",     f:1.05 },
+  "2":{ name:"Martes",    f:1.03 },
+  "3":{ name:"Miércoles", f:1.00 },
+  "4":{ name:"Jueves",    f:1.05 },
+  "5":{ name:"Viernes",   f:1.10 },
+  "6":{ name:"Sábado",    f:1.15 },
+};
+
+// ═══════════════════════════════════════════════════════
+// ENGINE
+// ═══════════════════════════════════════════════════════
+function haversine(lat1,lon1,lat2,lon2){
+  const R=3958.8, dLat=(lat2-lat1)*Math.PI/180, dLon=(lon2-lon1)*Math.PI/180;
+  const a=Math.sin(dLat/2)**2+Math.cos(lat1*Math.PI/180)*Math.cos(lat2*Math.PI/180)*Math.sin(dLon/2)**2;
+  return R*2*Math.atan2(Math.sqrt(a),Math.sqrt(1-a));
+}
+
+function calcHotScore(lat,lon){
+  // Find closest hub (any score)
+  let best=null, bestD=Infinity;
+  for(const h of HUBS){ const d=haversine(lat,lon,h.lat,h.lon); if(d<bestD){bestD=d;best=h;} }
+  const d_extra=Math.max(0,bestD-best.radius);
+  const score=Math.max(60,best.score-0.10*d_extra);
+
+  // Find nearest "good" hub (score ≥75)
+  // Total distance = full distance to hub center (radius + d_extra)
+  let nearestGood=null, milestoGood=Infinity;
+  for(const h of HUBS){
+    if(h.score<75) continue;
+    const d=haversine(lat,lon,h.lat,h.lon);
+    const toEdge=Math.max(0, d-h.radius); // 0 if already inside radius
+    if(toEdge<milestoGood){ milestoGood=toEdge; nearestGood=h; }
+  }
+  // totalToGood = full distance to nearest good hub center
+  const totalToGood = nearestGood ? Math.round(haversine(lat,lon,nearestGood.lat,nearestGood.lon)) : null;
+
+  return {
+    hub:best, dist:Math.round(bestD), d_extra:Math.round(d_extra*10)/10,
+    score:Math.round(score*10)/10,
+    nearestGood, milestoGood:Math.round(milestoGood), totalToGood
+  };
+}
+
+function classify(score){
+  if(score>=85) return {key:"good",    label:"Buena",   icon:"🔥",color:"#2ecc71",bg:"rgba(46,204,113,.12)", border:"#2ecc71"};
+  if(score>=75) return {key:"regular", label:"Regular", icon:"🟡",color:"#f39c12",bg:"rgba(243,156,18,.12)", border:"#f39c12"};
+  return              {key:"bad",     label:"Débil",   icon:"🔴",color:"#e74c3c",bg:"rgba(231,76,60,.12)",  border:"#e74c3c"};
+}
+
+function getMarketRate(miles){
+  if(miles>=1000) return {low:miles*0.85,high:miles*1.00};
+  if(miles<=100)  return {...RATE_TABLE[0]};
+  for(let i=0;i<RATE_TABLE.length-1;i++){
+    const a=RATE_TABLE[i],b=RATE_TABLE[i+1];
+    if(miles>=a.miles&&miles<=b.miles){
+      const t=(miles-a.miles)/(b.miles-a.miles);
+      return {low:a.low+(b.low-a.low)*t, high:a.high+(b.high-a.high)*t};
+    }
+  }
+  return RATE_TABLE[RATE_TABLE.length-1];
+}
+
+function roundTo25(n){ return Math.round(n/25)*25; }
+
+// ── COST MODEL ──────────────────────────────────────────────────────────────
+// All-in cost per mile (fuel already included — do NOT add fuel separately)
+const COST_PER_MI = 0.64;
+
+function calcTotalCost(tripMiles, dhMiles){
+  return (tripMiles + dhMiles) * COST_PER_MI;
+}
+
+// net = gross - MC_fee - total_cost
+function calcNet(gross, totalCost, mcPct){
+  return gross - (gross * mcPct) - totalCost;
+}
+
+// Enforce Min ≤ Good ≤ Excellent after rounding, with table floor
+function enforceOrder(fExc, fGood, fMin, tableBaseLow){
+  if(fMin >= fGood)  fMin = fGood - 25;
+  if(fGood >= fExc)  fGood = fExc - 25;
+  fMin = Math.max(tableBaseLow, fMin);
+  return { fExc, fGood, fMin };
+}
+
+function getRepoSuggestions(lat,lon){
+  return HUBS
+    .map(h=>({...h,dist:Math.round(haversine(lat,lon,h.lat,h.lon))}))
+    .filter(h=>h.dist>5&&h.dist<=150)
+    .sort((a,b)=>b.score-a.score||a.dist-b.dist)
+    .slice(0,3);
+}
+
+// ═══════════════════════════════════════════════════════
+// GEOCODING ENGINE  (ZIP / City,State / Address)
+// Nominatim (free) → cache 7 days → fallback Claude
+// ═══════════════════════════════════════════════════════
+
+function isZip(input) {
+  return /^\d{5}(-\d{4})?$/.test(input.trim());
+}
+
+// In-memory geocode cache (session only — avoids localStorage issues on file://)
+const GEO_CACHE = {};
+const GEO_CACHE_TTL = 7 * 24 * 3600 * 1000;
+
+function geoReadCache(key) {
+  const entry = GEO_CACHE[key];
+  if (!entry) return null;
+  if (Date.now() - entry.ts > GEO_CACHE_TTL) { delete GEO_CACHE[key]; return null; }
+  return entry.data;
+}
+function geoWriteCache(key, data) {
+  GEO_CACHE[key] = { ts: Date.now(), data };
+}
+
+// Nominatim geocode: returns [{lat,lon,displayName,importance}]
+async function nominatimGeocode(input) {
+  const zip   = isZip(input);
+  const query = zip ? `postalcode=${input.trim().slice(0,5)}&countrycodes=us`
+                    : `q=${encodeURIComponent(input)}&countrycodes=us`;
+  const url   = `https://nominatim.openstreetmap.org/search?${query}&format=json&limit=4&addressdetails=1`;
+  const res   = await fetch(url, { headers: { 'Accept-Language': 'en', 'User-Agent': 'VanRatePro/1.0' } });
+  if (!res.ok) throw new Error(`Nominatim ${res.status}`);
+  const arr = await res.json();
+  if (!arr.length) return [];
+  return arr.map(r => {
+    const a = r.address || {};
+    const city  = a.city || a.town || a.village || a.county || r.display_name.split(',')[0];
+    const state = a.state_code || a.state || '';
+    const zip5  = a.postcode ? a.postcode.slice(0,5) : '';
+    const displayName = zip5
+      ? `${city}, ${state} ${zip5}`
+      : `${city}, ${state}`.replace(/, $/, '');
+    return { lat: +r.lat, lon: +r.lon, displayName, importance: +r.importance };
+  }).sort((a,b) => b.importance - a.importance);
+}
+
+// Claude geocode — handles ZIP codes and City,State inputs
+async function claudeGeocode(input) {
+  const zip = isZip(input.trim());
+  const prompt = zip
+    ? `US ZIP code "${input.trim().slice(0,5)}":
+Return ONLY valid JSON (no markdown):
+{"lat":number,"lon":number,"city":"USPS city for this ZIP","state":"ST","zip":"${input.trim().slice(0,5)}","metro":"Nearest major metro city, ST or empty string if this IS the major city"}
+
+Rules:
+- city = official USPS city name for that ZIP code
+- metro = nearest metro area if city is a suburb/small town (e.g. "Baltimore, MD"), empty if city IS major metro
+- lat/lon = city center coordinates`
+    : `US location "${input}":
+Return ONLY valid JSON (no markdown):
+{"lat":number,"lon":number,"city":"City Name","state":"ST"}
+Coordinates for city center.`;
+
+  const res = await fetch("https://api.anthropic.com/v1/messages", {
+    method: "POST", headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({
+      model: "claude-sonnet-4-20250514", max_tokens: 180,
+      messages: [{ role: "user", content: prompt }]
+    })
+  });
+  const d = await res.json();
+  const txt = d.content.map(i => i.text||"").join("").replace(/```json|```/g,"").trim();
+  const j = JSON.parse(txt);
+
+  // Display: "Abingdon, MD · ZIP 21009 (Baltimore metro)"
+  const metro = j.metro && j.metro.trim() ? ` (${j.metro} area)` : '';
+  const displayName = `${j.city}, ${j.state}`;
+  const zipLabel = j.zip ? ` · ZIP ${j.zip}${metro}` : '';
+
+  return [{ lat: j.lat, lon: j.lon, displayName, zipLabel, importance: 1 }];
+}
+
+// Main geocodeLocation: returns [{lat,lon,displayName}] (1–4 candidates)
+// Primary: Claude AI (works from file://) — Nominatim as enhancement for multiple results
+async function geocodeLocation(input) {
+  const key = input.trim().toLowerCase();
+  const cached = geoReadCache(key);
+  if (cached) return cached;
+
+  let results = [];
+
+  // Primary: Claude AI (reliable from file://, handles ZIP + City,State)
+  try {
+    results = await claudeGeocode(input);
+  } catch(e) {
+    console.warn('[GEO] Claude failed:', e.message);
+  }
+
+  // Secondary enhancement: try Nominatim for multiple candidates (disambiguation)
+  if (results.length <= 1) {
+    try {
+      const nomResults = await nominatimGeocode(input);
+      if (nomResults.length > 1) {
+        // Use Nominatim's multiple results for disambiguation, but keep Claude's as first
+        results = nomResults;
+      } else if (!results.length && nomResults.length) {
+        results = nomResults;
+      }
+    } catch(e) {
+      console.warn('[GEO] Nominatim failed:', e.message);
+      // Nominatim failure is OK — Claude result still valid
+    }
+  }
+
+  if (results.length) geoWriteCache(key, results.slice(0, 4));
+  return results.slice(0, 4);
+}
+
+// Single-result wrapper used by existing analyze() + weather
+async function geocodeCity(input) {
+  const results = await geocodeLocation(input);
+  if (!results.length) throw new Error('Location not found: ' + input);
+  const r = results[0];
+  return { lat: r.lat, lon: r.lon, fullName: r.displayName, zipLabel: r.zipLabel||'' };
+}
+
+// ═══════════════════════════════════════════════════════
+// REST AREAS ENGINE  (Claude AI — works from file://, no CORS issues)
+// ═══════════════════════════════════════════════════════
+
+const restCache = {};
+
+async function fetchRestAreas(routePoints, destLat, destLon, originName, destName) {
+  const cacheKey = `${originName}|${destName}`;
+  if (restCache[cacheKey]) return restCache[cacheKey];
+
+  // Build state list from route for Claude context
+  const states = [...new Set(routePoints.map(p => p.state).filter(Boolean))].join(', ');
+  const midPt = routePoints[Math.floor(routePoints.length/2)];
+
+  const prompt = `List 6-8 real US highway rest areas along the route from ${originName} to ${destName}.
+States crossed: ${states || 'along the route'}.
+Return ONLY valid JSON array (no markdown):
+[{"name":"Rest Area Name","state":"ST","mile":number,"side":"EB|WB|NB|SB|Both","amenities":["🚻 Restrooms","⛽ Fuel","🍔 Food","🅿️ Parking","🚚 Truck Parking","📶 WiFi","🥤 Vending"],"lat":number,"lon":number,"distToDest":number,"highway":"I-XX or US-XX"}]
+Rules:
+- Use REAL rest area names (e.g. "Maryland House Travel Plaza", "Ohio Turnpike - Vermilion Valley")
+- distToDest = approximate miles from rest area to ${destName}
+- Include only amenities actually present at that location
+- lat/lon must be accurate for that rest area`;
+
+  let raw = [];
+  try {
+    const res = await fetch("https://api.anthropic.com/v1/messages", {
+      method:"POST", headers:{"Content-Type":"application/json"},
+      body: JSON.stringify({
+        model:"claude-sonnet-4-20250514", max_tokens:1200,
+        messages:[{role:"user", content: prompt}]
+      })
+    });
+    const d = await res.json();
+    const txt = d.content.map(i=>i.text||'').join('').replace(/```json|```/g,'').trim();
+    raw = JSON.parse(txt);
+  } catch(e) {
+    console.warn('[REST] Claude failed:', e.message);
+    return [];
+  }
+
+  // Normalize + compute offsetToRoute
+  const areas = raw.map(el => {
+    if (!el.lat || !el.lon) return null;
+    let minOffset = Infinity;
+    for (const p of routePoints) {
+      const d = wxHaversine(el.lat, el.lon, p.lat, p.lon);
+      if (d < minOffset) minOffset = d;
+    }
+    return {
+      lat: el.lat, lon: el.lon,
+      name: el.name || 'Rest Area',
+      state: el.state || '',
+      highway: el.highway || '',
+      side: el.side || '',
+      amenities: el.amenities || ['🚻 Restrooms','🅿️ Parking'],
+      offsetToRoute: +minOffset.toFixed(1),
+      distToDest: +(el.distToDest||0).toFixed(1)
+    };
+  }).filter(Boolean);
+
+  areas.sort((a,b) => b.distToDest - a.distToDest); // order by distance from origin
+
+  restCache[cacheKey] = areas;
+  return areas;
+}
+
+function annotateRestAreas(areas) {
+  if (!areas.length) return areas;
+  // Badge: closest to destination
+  let minDest = Infinity, closestDestIdx = -1;
+  areas.forEach((a, i) => { if (a.distToDest < minDest) { minDest = a.distToDest; closestDestIdx = i; } });
+  if (closestDestIdx >= 0) areas[closestDestIdx].badgeClosestDest = true;
+  // Badge: closest to route
+  let minRoute = Infinity, closestRouteIdx = -1;
+  areas.forEach((a, i) => { if (a.offsetToRoute < minRoute) { minRoute = a.offsetToRoute; closestRouteIdx = i; } });
+  if (closestRouteIdx >= 0) areas[closestRouteIdx].badgeClosestRoute = true;
+  return areas;
+}
+
+// ═══════════════════════════════════════════════════════
+// SMALL COMPONENTS
+// ═══════════════════════════════════════════════════════
+const fmt = n => "$"+Math.round(n).toLocaleString("en-US");
+
+function ScoreGauge({score}){
+  const cls=classify(score);
+  const pct=Math.min(1,(score-60)/(92-60));
+  const r=26, size=64, cx=32, cy=32;
+  const circ=2*Math.PI*r;
+  return (
+    <div style={{position:"relative",width:size,height:size,flexShrink:0}}>
+      <svg width={size} height={size} style={{transform:"rotate(-90deg)"}}>
+        <circle cx={cx} cy={cy} r={r} fill="none" stroke="#1e2438" strokeWidth={5}/>
+        <circle cx={cx} cy={cy} r={r} fill="none" stroke={cls.color} strokeWidth={5}
+          strokeDasharray={`${circ*pct} ${circ}`} strokeLinecap="round"/>
+      </svg>
+      <div style={{position:"absolute",inset:0,display:"flex",flexDirection:"column",alignItems:"center",justifyContent:"center"}}>
+        <div style={{fontSize:15,fontWeight:900,color:cls.color,lineHeight:1}}>{score}</div>
+        <div style={{fontSize:8,color:"#4a5578",letterSpacing:.5}}>HOT</div>
+      </div>
+    </div>
+  );
+}
+
+function ZoneChip({score}){
+  const c=classify(score);
+  return (
+    <span style={{background:c.bg,color:c.color,border:`1px solid ${c.border}50`,fontSize:11,fontWeight:700,padding:"2px 9px",borderRadius:20,whiteSpace:"nowrap"}}>
+      {c.icon} {c.label}
+    </span>
+  );
+}
+
+function Divider({title}){
+  return (
+    <div style={{display:"flex",alignItems:"center",gap:8,margin:"18px 0 10px"}}>
+      <span style={{fontSize:9,fontWeight:700,letterSpacing:2.5,color:"#3a4560",textTransform:"uppercase",whiteSpace:"nowrap"}}>{title}</span>
+      <div style={{flex:1,height:1,background:"#1a2035"}}/>
+    </div>
+  );
+}
+
+function InfoRow({label,value,sub,valueColor,big}){
+  return (
+    <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",padding:"9px 12px",borderBottom:"1px solid #111827"}}>
+      <div>
+        <div style={{fontSize:12}}>{label}</div>
+        {sub&&<div style={{fontSize:10,color:"#4a5578",fontFamily:"monospace"}}>{sub}</div>}
+      </div>
+      <div style={{fontSize:big?17:13,fontWeight:700,color:valueColor||"#c8d0e8"}}>{value}</div>
+    </div>
+  );
+}
+
+// ═══════════════════════════════════════════════════════
+// MAIN
+// ═══════════════════════════════════════════════════════
+// ═══════════════════════════════════════════════════════
+// REST AREA FINDER COMPONENT
+// ═══════════════════════════════════════════════════════
+function RestAreaFinder({t, lang}) {
+  const [zip,       setZip]       = useState('');
+  const [radius,    setRadius]    = useState('25');
+  const [loading,   setLoading]   = useState(false);
+  const [results,   setResults]   = useState(null); // {restAreas:[], businesses:[]}
+  const [error,     setError]     = useState('');
+
+  async function search() {
+    if (!zip.trim()) return;
+    setLoading(true); setError(''); setResults(null);
+    try {
+      const res = await fetch("https://api.anthropic.com/v1/messages", {
+        method:"POST", headers:{"Content-Type":"application/json"},
+        body: JSON.stringify({
+          model:"claude-sonnet-4-20250514", max_tokens:2000,
+          messages:[{role:"user", content:
+`Find rest areas and nearby businesses within ${radius} miles of ZIP/location: "${zip.trim()}"
+
+Return ONLY valid JSON (no markdown):
+{
+  "locationName": "City, ST",
+  "restAreas": [
+    {
+      "name": "Full Name",
+      "type": "state|private",
+      "highway": "I-95",
+      "direction": "NB|SB|EB|WB|Both",
+      "distMiles": 5.2,
+      "amenities": ["🚻 Restrooms","⛽ Fuel","🍔 Food","🚿 Showers","🅿️ Parking","🚚 Truck Parking","📶 WiFi","🛏️ Sleeper Rooms"],
+      "notes": "optional note"
+    }
+  ],
+  "businesses": [
+    {
+      "name": "Business Name",
+      "type": "Truck Stop|Travel Plaza|Walmart|Loves|Pilot|Flying J|TA|Petro|McDonald's|Subway|Hotel|Mechanic|Tire Shop|Weigh Station",
+      "distMiles": 1.2,
+      "address": "123 Main St",
+      "truckFriendly": true
+    }
+  ]
+}
+
+Rules:
+- restAreas: REAL named rest areas near that ZIP, sorted by distance. type="state" for DOT/highway rest areas, type="private" for truck stops/travel plazas
+- businesses: real truck-relevant businesses (fuel, food, repairs, lodging) within radius
+- distMiles must be realistic driving miles
+- include only amenities actually present
+- max 8 rest areas, max 10 businesses`
+          }]
+        })
+      });
+      const d = await res.json();
+      const txt = d.content.map(i=>i.text||'').join('').replace(/```json|```/g,'').trim();
+      const data = JSON.parse(txt);
+      setResults(data);
+    } catch(e) {
+      setError(lang==='es'?`Error: ${e.message}`:`Error: ${e.message}`);
+    }
+    setLoading(false);
+  }
+
+  const inp = {background:"#0b0f1c",border:"1px solid #1e2438",borderRadius:7,color:"#c8d0e8",fontSize:14,padding:"11px 12px",outline:"none",fontFamily:"inherit",width:"100%"};
+  const lbl = {fontSize:9,fontWeight:700,letterSpacing:2,color:"#3a4560",textTransform:"uppercase",display:"block",marginBottom:5};
+
+  return (
+    <div style={{marginTop:8}}>
+      {/* ZIP Input row */}
+      <div style={{display:"grid",gridTemplateColumns:"1fr auto",gap:8,marginBottom:8}}>
+        <div>
+          <label style={lbl}>{t.finderZipLabel}</label>
+          <input style={inp} placeholder={t.finderZipPlaceholder}
+            value={zip} onChange={e=>setZip(e.target.value)}
+            onKeyDown={e=>e.key==='Enter'&&search()}/>
+        </div>
+        <div>
+          <label style={lbl}>{t.finderRadiusLabel}</label>
+          <select style={{...inp,cursor:"pointer",width:"auto",minWidth:70}}
+            value={radius} onChange={e=>setRadius(e.target.value)}>
+            {["10","25","50","75"].map(r=><option key={r} value={r}>{r}mi</option>)}
+          </select>
+        </div>
+      </div>
+      <button onClick={search} disabled={loading} style={{width:"100%",background:loading?"#1a2438":"linear-gradient(135deg,#1a3a8a,#2563eb)",border:"none",borderRadius:8,padding:"13px",fontSize:13,fontWeight:800,color:"#fff",cursor:loading?"not-allowed":"pointer",letterSpacing:1,marginBottom:10}}>
+        {loading ? <span style={{display:"flex",alignItems:"center",justifyContent:"center",gap:8}}><span style={{width:14,height:14,border:"2px solid #ffffff40",borderTop:"2px solid #fff",borderRadius:"50%",display:"inline-block",animation:"spin .6s linear infinite"}}/>{t.finderLoading}</span> : t.finderBtn}
+      </button>
+
+      {error && <div style={{background:"rgba(231,76,60,.1)",border:"1px solid #e74c3c50",borderRadius:7,padding:"10px 12px",fontSize:11,color:"#e74c3c",marginBottom:8}}>{error}</div>}
+
+      {results && (
+        <div className="fade-up">
+          {results.locationName && (
+            <div style={{fontSize:11,color:"#4a5578",fontFamily:"monospace",marginBottom:10,textAlign:"center"}}>
+              📍 {results.locationName} · radio {radius}mi
+            </div>
+          )}
+
+          {/* REST AREAS */}
+          <div style={{fontSize:10,fontWeight:800,letterSpacing:2,color:"#3a4560",textTransform:"uppercase",marginBottom:6}}>{t.finderRestAreas}</div>
+          {(!results.restAreas || results.restAreas.length===0)
+            ? <div style={{fontSize:11,color:"#3a4560",fontFamily:"monospace",marginBottom:10,padding:"10px",background:"#0b0f1c",borderRadius:7}}>{t.finderNone}</div>
+            : results.restAreas.map((ra,i)=>{
+              const isState = ra.type==='state';
+              const color   = isState ? "#2ecc71" : "#f39c12";
+              const bg      = isState ? "rgba(46,204,113,.08)" : "rgba(243,156,18,.08)";
+              return (
+                <div key={i} style={{background:bg,border:`1px solid ${color}40`,borderLeft:`3px solid ${color}`,borderRadius:8,padding:"10px 12px",marginBottom:7}}>
+                  <div style={{display:"flex",justifyContent:"space-between",alignItems:"flex-start",gap:8}}>
+                    <div style={{flex:1}}>
+                      <div style={{display:"flex",alignItems:"center",gap:6,flexWrap:"wrap",marginBottom:3}}>
+                        <span style={{fontSize:12,fontWeight:800}}>{ra.name}</span>
+                        <span style={{background:color,color:"#000",fontSize:7,fontWeight:800,padding:"2px 6px",borderRadius:3,letterSpacing:.8}}>
+                          {isState ? t.finderStateTag : t.finderPrivateTag}
+                        </span>
+                      </div>
+                      {(ra.highway||ra.direction) && (
+                        <div style={{fontSize:9,color:color,fontFamily:"monospace",marginBottom:3}}>
+                          {ra.highway}{ra.direction?' · '+ra.direction:''}
+                        </div>
+                      )}
+                      {ra.amenities && ra.amenities.length>0 && (
+                        <div style={{fontSize:10,color:"#5080a0",lineHeight:1.8,marginTop:3}}>{ra.amenities.join('  ')}</div>
+                      )}
+                      {ra.notes && <div style={{fontSize:9,color:"#3a4560",marginTop:3,fontStyle:"italic"}}>{ra.notes}</div>}
+                    </div>
+                    <div style={{textAlign:"right",flexShrink:0}}>
+                      <div style={{fontSize:16,fontWeight:900,color}}>{ra.distMiles}</div>
+                      <div style={{fontSize:8,color:"#3a4560",fontFamily:"monospace"}}>miles</div>
+                    </div>
+                  </div>
+                </div>
+              );
+            })
+          }
+
+          {/* BUSINESSES */}
+          {results.businesses && results.businesses.length>0 && (
+            <>
+              <div style={{fontSize:10,fontWeight:800,letterSpacing:2,color:"#3a4560",textTransform:"uppercase",marginBottom:6,marginTop:12}}>{t.finderCommercial}</div>
+              {results.businesses.map((b,i)=>(
+                <div key={i} style={{background:"#0b0f1c",border:"1px solid #1e2438",borderLeft:`3px solid ${b.truckFriendly?"#3b82f6":"#2a3450"}`,borderRadius:7,padding:"9px 12px",marginBottom:6,display:"flex",justifyContent:"space-between",alignItems:"center",gap:8}}>
+                  <div style={{flex:1}}>
+                    <div style={{fontSize:12,fontWeight:700,marginBottom:2}}>{b.name}</div>
+                    <div style={{display:"flex",gap:6,alignItems:"center",flexWrap:"wrap"}}>
+                      <span style={{fontSize:9,color:"#3b82f6",background:"rgba(59,130,246,.12)",padding:"1px 6px",borderRadius:3,fontFamily:"monospace"}}>{b.type}</span>
+                      {b.truckFriendly && <span style={{fontSize:9,color:"#2ecc71",fontFamily:"monospace"}}>🚚 truck ok</span>}
+                    </div>
+                    {b.address && <div style={{fontSize:9,color:"#3a4560",marginTop:3,fontFamily:"monospace"}}>{b.address}</div>}
+                  </div>
+                  <div style={{textAlign:"right",flexShrink:0}}>
+                    <div style={{fontSize:15,fontWeight:900,color:"#60a5fa"}}>{b.distMiles}</div>
+                    <div style={{fontSize:8,color:"#3a4560",fontFamily:"monospace"}}>miles</div>
+                  </div>
+                </div>
+              ))}
+            </>
+          )}
+        </div>
+      )}
+    </div>
+  );
+}
+
+function App(){
+  const [lang, setLang] = useState('es');
+  const t = STRINGS[lang];
+  const toggleLang = () => setLang(l => l === 'es' ? 'en' : 'es');
+  const [form,setForm]=useState({
+    originCity:"",destCity:"",miles:"",dayOfWeek:"",
+    mcPct:"18", deadhead:"0", costPerMi:"0.64"
+  });
+  const [loading,setLoading]=useState(false);
+  const [result,setResult]=useState(null);
+  const [error,setError]=useState("");
+  const resultsRef=useRef(null);
+
+  // Geocode disambiguation
+  const [originCandidates, setOriginCandidates] = useState([]);
+  const [destCandidates,   setDestCandidates]   = useState([]);
+  const [resolvedOrigin,   setResolvedOrigin]   = useState(null);
+  const [resolvedDest,     setResolvedDest]     = useState(null);
+  const [geocoding,        setGeocoding]        = useState('');
+
+  // Current location
+  const [currentLoc,     setCurrentLoc]     = useState('');
+  const [resolvedCurrent,setResolvedCurrent]= useState(null); // {lat,lon,displayName}
+  const [gpsLoading,     setGpsLoading]     = useState(false);
+  const [currentCandidates, setCurrentCandidates] = useState([]);
+
+  // Auto-miles: driving distance via Claude API (debounced)
+  const milesCalcRef = useRef(null);
+  useEffect(() => {
+    if (!resolvedOrigin || !resolvedDest) return;
+    clearTimeout(milesCalcRef.current);
+    milesCalcRef.current = setTimeout(async () => {
+      try {
+        const res = await fetch("https://api.anthropic.com/v1/messages", {
+          method:"POST", headers:{"Content-Type":"application/json"},
+          body: JSON.stringify({ model:"claude-sonnet-4-20250514", max_tokens:60,
+            messages:[{role:"user", content:
+              `Driving miles from "${resolvedOrigin.displayName}" to "${resolvedDest.displayName}". JSON only: {"miles":number}`}]})
+        });
+        const d = await res.json();
+        const j = JSON.parse(d.content.map(i=>i.text||'').join('').replace(/```json|```/g,'').trim());
+        if (j.miles > 0) setForm(f=>({...f, miles: Math.round(j.miles).toString()}));
+      } catch(e) {
+        // Fallback: haversine × 1.25 road factor
+        const m = haversine(resolvedOrigin.lat, resolvedOrigin.lon, resolvedDest.lat, resolvedDest.lon);
+        setForm(f=>({...f, miles: Math.round(m * 1.25).toString()}));
+      }
+    }, 500);
+  }, [resolvedOrigin, resolvedDest]);
+
+  // Auto-deadhead: instant haversine first, then Claude driving distance
+  const dhCalcRef = useRef(null);
+  useEffect(() => {
+    if (!resolvedCurrent || !resolvedOrigin) return;
+    // Immediate estimate via haversine × 1.25
+    const immediate = Math.round(haversine(resolvedCurrent.lat, resolvedCurrent.lon, resolvedOrigin.lat, resolvedOrigin.lon) * 1.25);
+    setForm(f=>({...f, deadhead: immediate.toString()}));
+    // Then refine with Claude driving distance
+    clearTimeout(dhCalcRef.current);
+    dhCalcRef.current = setTimeout(async () => {
+      try {
+        const res = await fetch("https://api.anthropic.com/v1/messages", {
+          method:"POST", headers:{"Content-Type":"application/json"},
+          body: JSON.stringify({ model:"claude-sonnet-4-20250514", max_tokens:60,
+            messages:[{role:"user", content:
+              `Driving miles from "${resolvedCurrent.displayName}" to "${resolvedOrigin.displayName}". JSON only: {"miles":number}`}]})
+        });
+        const d = await res.json();
+        const j = JSON.parse(d.content.map(i=>i.text||'').join('').replace(/```json|```/g,'').trim());
+        if (j.miles >= 0) setForm(f=>({...f, deadhead: Math.round(j.miles).toString()}));
+      } catch(e) { /* keep haversine estimate */ }
+    }, 600);
+  }, [resolvedCurrent, resolvedOrigin]);
+
+  useEffect(()=>{
+    setForm(f=>({...f,dayOfWeek:String(new Date().getDay())}));
+  },[]);
+
+  const set=(k,v)=>{
+    setForm(f=>({...f,[k]:v}));
+    if(k==="originCity"){ setResult(null); setResolvedOrigin(null); setOriginCandidates([]); }
+    if(k==="destCity")  { setResult(null); setResolvedDest(null);   setDestCandidates([]); }
+  };
+
+  // Geocode a field on blur, if user hasn't picked yet
+  async function resolveField(field) {
+    const input = field === 'origin' ? form.originCity : form.destCity;
+    const resolved = field === 'origin' ? resolvedOrigin : resolvedDest;
+    if (!input.trim() || resolved) return;
+
+    // Basic ZIP format check
+    if (/^\d{1,4}$/.test(input.trim())) return; // Too short, still typing
+    if (/^\d{6,}$/.test(input.trim())) { setError(t.zipInvalid); return; }
+
+    setGeocoding(field);
+    try {
+      const results = await geocodeLocation(input);
+      if (!results.length) { setError(t.geocodeErr); }
+      else if (results.length === 1) {
+        if (field === 'origin') { setResolvedOrigin(results[0]); setOriginCandidates([]); }
+        else                    { setResolvedDest(results[0]);   setDestCandidates([]); }
+      } else {
+        // Show disambiguation
+        if (field === 'origin') setOriginCandidates(results);
+        else                    setDestCandidates(results);
+      }
+    } catch(e) { setError(t.geocodeErr); }
+    setGeocoding('');
+  }
+
+  function pickCandidate(field, candidate) {
+    if (field === 'origin') {
+      setResolvedOrigin({...candidate, zipLabel: candidate.zipLabel||''});
+      setForm(f=>({...f, originCity: candidate.displayName}));
+      setOriginCandidates([]);
+    } else if (field === 'dest') {
+      setResolvedDest(candidate);
+      setForm(f=>({...f, destCity: candidate.displayName}));
+      setDestCandidates([]);
+    } else {
+      setResolvedCurrent(candidate);
+      setCurrentLoc(candidate.displayName);
+      setCurrentCandidates([]);
+    }
+    setResult(null);
+  }
+
+  async function resolveCurrentField() {
+    if (!currentLoc.trim() || resolvedCurrent) return;
+    if (/^\d{1,4}$/.test(currentLoc.trim())) return;
+    setGeocoding('current');
+    try {
+      const results = await geocodeLocation(currentLoc);
+      if (!results.length) setError(t.geocodeErr);
+      else if (results.length === 1) { setResolvedCurrent(results[0]); setCurrentCandidates([]); }
+      else setCurrentCandidates(results);
+    } catch(e) { setError(t.geocodeErr); }
+    setGeocoding('');
+  }
+
+  function getGPSLocation() {
+    if (!navigator.geolocation) { setError('GPS no disponible'); return; }
+    setGpsLoading(true);
+    navigator.geolocation.getCurrentPosition(
+      async (pos) => {
+        const {latitude: lat, longitude: lon} = pos.coords;
+        // Reverse geocode via nominatim
+        try {
+          const res = await fetch(`https://nominatim.openstreetmap.org/reverse?lat=${lat}&lon=${lon}&format=json`, {
+            headers: {'Accept-Language':'en','User-Agent':'VanRatePro/1.0'}
+          });
+          const data = await res.json();
+          const a = data.address||{};
+          const city  = a.city||a.town||a.village||a.county||'Current Location';
+          const state = a.state_code||a.state||'';
+          const displayName = `${city}, ${state}`.replace(/, $/,'');
+          const loc = {lat, lon, displayName, zipLabel:''};
+          setResolvedCurrent(loc);
+          setCurrentLoc(displayName);
+          setCurrentCandidates([]);
+        } catch(e) {
+          // Fallback: just use coordinates
+          const loc = {lat, lon, displayName:`${lat.toFixed(3)}, ${lon.toFixed(3)}`, zipLabel:''};
+          setResolvedCurrent(loc);
+          setCurrentLoc(loc.displayName);
+        }
+        setGpsLoading(false);
+      },
+      (err) => { setError(t.geocodeErr); setGpsLoading(false); },
+      {timeout:10000, enableHighAccuracy:true}
+    );
+  }
+
+  async function analyze(){
+    setError(""); setResult(null);
+    const miles   = parseFloat(form.miles);
+    const dhMiles = parseFloat(form.deadhead)||0;
+    const mcPct   = (parseFloat(form.mcPct)||18) / 100;
+    const costPerMi = parseFloat(form.costPerMi)||0.64;
+    const day     = DAY_FACTORS[form.dayOfWeek];
+
+    if(!form.originCity.trim()) return setError(t.errOrigin);
+    if(!form.destCity.trim())   return setError(t.errDest);
+    if(!miles||miles<10)        return setError(t.errMiles);
+    if(!form.dayOfWeek)         return setError(t.errDay);
+
+    setLoading(true);
+    try{
+      // Use already-resolved coords if available, else geocode now
+      let og, dg;
+      if (resolvedOrigin) {
+        og = { lat: resolvedOrigin.lat, lon: resolvedOrigin.lon, fullName: resolvedOrigin.displayName };
+      } else {
+        og = await geocodeCity(form.originCity);
+        setResolvedOrigin({ lat: og.lat, lon: og.lon, displayName: og.fullName, zipLabel: og.zipLabel||'' });
+      }
+      if (resolvedDest) {
+        dg = { lat: resolvedDest.lat, lon: resolvedDest.lon, fullName: resolvedDest.displayName };
+      } else {
+        dg = await geocodeCity(form.destCity);
+        setResolvedDest({ lat: dg.lat, lon: dg.lon, displayName: dg.fullName, zipLabel: dg.zipLabel||'' });
+      }
+
+      const oHS=calcHotScore(og.lat,og.lon);
+      const dHS=calcHotScore(dg.lat,dg.lon);
+      const oCls=classify(oHS.score), dCls=classify(dHS.score);
+      const mr=getMarketRate(miles);
+      const range=mr.high-mr.low;
+      const mpfVal=MPF_MATRIX[oCls.key][dCls.key];
+
+      // ── Remote Zone Surcharge: tiered by rate level, rounded to $10 ──────
+      // Min = $0.50/mi · Good = $0.75/mi · Exc = $1.00/mi outside radius
+      const worstDExtra = Math.max(oHS.d_extra, dHS.d_extra);
+      const isRemote = worstDExtra > 0;
+      const roundTo10 = n => Math.round(n / 10) * 10;
+      const surchargeMin  = isRemote ? roundTo10(worstDExtra * 0.50) : 0;
+      const surchargeGood = isRemote ? roundTo10(worstDExtra * 0.75) : 0;
+      const surchargeExc  = isRemote ? roundTo10(worstDExtra * 1.00) : 0;
+      const remoteSurcharge = surchargeMin; // for display reference
+
+      const rawExc = mr.high;
+      const rawGood= mr.low + range * mpfVal;
+      const rawMin = Math.max(mr.low, mr.low + range * (mpfVal - 0.20));
+
+      const df = day.f;
+      let fExc  = roundTo25(rawExc  * df) + surchargeExc;
+      let fGood = roundTo25(rawGood * df) + surchargeGood;
+      let fMin  = roundTo25(rawMin  * df) + surchargeMin;
+
+      const ordered = enforceOrder(fExc, fGood, fMin, mr.low);
+      fExc = ordered.fExc; fGood = ordered.fGood; fMin = ordered.fMin;
+
+      const totalCost     = (miles + dhMiles) * costPerMi;  // con deadhead
+      const totalCostNoDH = miles * costPerMi;               // sin deadhead
+      const fuelInfo      = (miles / 14) * 3.50;
+
+      const netExc      = calcNet(fExc,  totalCost,     mcPct);
+      const netGood     = calcNet(fGood, totalCost,     mcPct);
+      const netMin      = calcNet(fMin,  totalCost,     mcPct);
+      const netExcNoDH  = calcNet(fExc,  totalCostNoDH, mcPct);
+      const netGoodNoDH = calcNet(fGood, totalCostNoDH, mcPct);
+      const netMinNoDH  = calcNet(fMin,  totalCostNoDH, mcPct);
+
+      const rpmBruto = g => (g/miles).toFixed(2);
+      const rpmNeto  = n => (n/miles).toFixed(2);
+      const marginPct= n => ((n/totalCost-1)*100).toFixed(1);
+
+      const ratio   = netGood / totalCost;
+      const verdict = ratio >= 0.40 ? "accept" : ratio >= 0.10 ? "caution" : "reject";
+
+      const needsORepo = oHS.score<75;
+      const needsDRepo = dHS.score<75;
+
+      setResult({
+        og,dg,oHS,dHS,oCls,dCls,mr,range,mpfVal,
+        rawExc,rawGood,rawMin,
+        fExc,fGood,fMin,
+        day,df,miles,dhMiles,
+        dayKey: form.dayOfWeek,
+        totalCost, totalCostNoDH, fuelInfo, mcPct, costPerMi,
+        netExc, netGood, netMin,
+        netExcNoDH, netGoodNoDH, netMinNoDH,
+        rpmBruto,rpmNeto,marginPct,
+        verdict,
+        isRemote, remoteSurcharge, surchargeMin, surchargeGood, surchargeExc, worstDExtra,
+        oRepo:needsORepo?getRepoSuggestions(og.lat,og.lon):[],
+        dRepo:needsDRepo?getRepoSuggestions(dg.lat,dg.lon):[],
+        needsORepo,needsDRepo
+      });
+      setTimeout(()=>resultsRef.current?.scrollIntoView({behavior:"smooth",block:"start"}),120);
+    }catch(e){
+      setError(t.errGeocode);
+    }
+    setLoading(false);
+  }
+
+  const inp={
+    width:"100%",background:"#0b0f1c",border:"1px solid #1e2438",
+    borderRadius:8,color:"#c8d0e8",fontSize:15,padding:"12px 13px",
+    outline:"none",appearance:"none",WebkitAppearance:"none"
+  };
+  const lbl={fontSize:10,color:"#4a5578",letterSpacing:1.5,marginBottom:5,
+    display:"block",fontWeight:700,textTransform:"uppercase"};
+
+  const VERDICT_CFG={
+    accept: {color:"#2ecc71",bg:"rgba(46,204,113,.08)", border:"#2ecc71",icon:"✅",label:t.verdictAccept},
+    caution:{color:"#f39c12",bg:"rgba(243,156,18,.08)", border:"#f39c12",icon:"⚠️",label:t.verdictCaution},
+    reject: {color:"#e74c3c",bg:"rgba(231,76,60,.08)",  border:"#e74c3c",icon:"🚫",label:t.verdictReject},
+  };
+
+  return (
+    <div style={{maxWidth:600,margin:"0 auto",paddingBottom:60}}>
+
+      {/* HEADER */}
+      <div style={{background:"linear-gradient(180deg,#0e1628 0%,#080c14 100%)",borderBottom:"1px solid #1a2035",padding:"14px 14px 12px"}}>
+        {/* Top row: badges + lang toggle */}
+        <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",marginBottom:8,gap:8}}>
+          <div style={{display:"flex",flexWrap:"nowrap",gap:5,overflow:"hidden"}}>
+            <span style={{background:"#f0c040",color:"#000",fontSize:8,fontWeight:800,padding:"3px 7px",borderRadius:3,letterSpacing:1.2,whiteSpace:"nowrap"}}>{t.tagVersion}</span>
+            <span style={{background:"rgba(46,204,113,.15)",color:"#2ecc71",fontSize:8,fontWeight:800,padding:"3px 7px",borderRadius:3,letterSpacing:1.2,whiteSpace:"nowrap"}}>{t.tagHot}</span>
+            <span style={{background:"rgba(96,165,250,.15)",color:"#60a5fa",fontSize:8,fontWeight:800,padding:"3px 7px",borderRadius:3,letterSpacing:1.2,whiteSpace:"nowrap"}}>{t.tagOwner}</span>
+          </div>
+          <button onClick={toggleLang} style={{background:"#1a2438",border:"1px solid #2a3450",borderRadius:6,padding:"4px 10px",cursor:"pointer",fontSize:11,fontWeight:800,color:"#7bb3f0",flexShrink:0,whiteSpace:"nowrap"}}>
+            {lang==='es'?'🇺🇸 EN':'🇲🇽 ES'}
+          </button>
+        </div>
+        <div style={{fontSize:20,fontWeight:900,letterSpacing:-.5}}>Cargo Van <span style={{color:"#f0c040"}}>Rate Advisor</span></div>
+        <div style={{fontSize:9,color:"#3a4560",marginTop:3,fontFamily:"monospace",letterSpacing:.5}}>{t.regionLine}</div>
+      </div>
+
+      <div style={{padding:"16px 16px 0"}}>
+
+        {/* ROUTE */}
+        <Divider title={t.sectionRoute}/>
+        <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:10,marginBottom:4}}>
+          {/* ORIGIN */}
+          <div>
+            <label style={lbl}>{t.labelPickup}</label>
+            <div style={{position:"relative"}}>
+              <input style={{...inp, paddingRight: resolvedOrigin?32:13, borderColor: resolvedOrigin?"#2ecc7150":"#1e2438"}}
+                placeholder={t.placeholderOrigin}
+                value={form.originCity}
+                onChange={e=>set("originCity",e.target.value)}
+                onBlur={()=>resolveField('origin')}/>
+              {geocoding==='origin' && <div style={{position:"absolute",right:10,top:"50%",transform:"translateY(-50%)",width:14,height:14,border:"2px solid #1e2438",borderTop:"2px solid #3b82f6",borderRadius:"50%",animation:"spin .6s linear infinite"}}/>}
+              {resolvedOrigin && geocoding!=='origin' && <div style={{position:"absolute",right:10,top:"50%",transform:"translateY(-50%)",fontSize:14,color:"#2ecc71"}}>✓</div>}
+            </div>
+            {resolvedOrigin && <div style={{fontSize:9,color:"#2ecc71",marginTop:3,fontFamily:"monospace",overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{resolvedOrigin.displayName}{resolvedOrigin.zipLabel||''}</div>}
+            {originCandidates.length>0 && (
+              <div style={{background:"#0e1220",border:"1px solid #2a3450",borderRadius:6,marginTop:4,overflow:"hidden"}}>
+                <div style={{fontSize:9,color:"#4a5578",padding:"5px 9px",fontFamily:"monospace"}}>{t.geocodeAmbiguous}</div>
+                {originCandidates.map((c,i)=>(
+                  <div key={i} onClick={()=>pickCandidate('origin',c)} style={{padding:"7px 9px",fontSize:11,cursor:"pointer",borderTop:"1px solid #1a2035",background:"transparent"}}>
+                    📍 {c.displayName}
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
+          {/* DEST */}
+          <div>
+            <label style={lbl}>{t.labelDelivery}</label>
+            <div style={{position:"relative"}}>
+              <input style={{...inp, paddingRight: resolvedDest?32:13, borderColor: resolvedDest?"#2ecc7150":"#1e2438"}}
+                placeholder={t.placeholderDest}
+                value={form.destCity}
+                onChange={e=>set("destCity",e.target.value)}
+                onBlur={()=>resolveField('dest')}/>
+              {geocoding==='dest' && <div style={{position:"absolute",right:10,top:"50%",transform:"translateY(-50%)",width:14,height:14,border:"2px solid #1e2438",borderTop:"2px solid #3b82f6",borderRadius:"50%",animation:"spin .6s linear infinite"}}/>}
+              {resolvedDest && geocoding!=='dest' && <div style={{position:"absolute",right:10,top:"50%",transform:"translateY(-50%)",fontSize:14,color:"#2ecc71"}}>✓</div>}
+            </div>
+            {resolvedDest && <div style={{fontSize:9,color:"#2ecc71",marginTop:3,fontFamily:"monospace",overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{resolvedDest.displayName}{resolvedDest.zipLabel||''}</div>}
+            {destCandidates.length>0 && (
+              <div style={{background:"#0e1220",border:"1px solid #2a3450",borderRadius:6,marginTop:4,overflow:"hidden"}}>
+                <div style={{fontSize:9,color:"#4a5578",padding:"5px 9px",fontFamily:"monospace"}}>{t.geocodeAmbiguous}</div>
+                {destCandidates.map((c,i)=>(
+                  <div key={i} onClick={()=>pickCandidate('dest',c)} style={{padding:"7px 9px",fontSize:11,cursor:"pointer",borderTop:"1px solid #1a2035",background:"transparent"}}>
+                    📍 {c.displayName}
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
+        </div>
+        <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:10,marginBottom:4}}>
+          <div>
+            <label style={lbl}>{t.labelMiles}</label>
+            <div style={{position:"relative"}}>
+              <input style={{...inp, borderColor: (resolvedOrigin&&resolvedDest)?"#3b82f650":"#1e2438"}}
+                type="number" placeholder={t.placeholderMiles}
+                value={form.miles}
+                onChange={e=>set("miles",e.target.value)}/>
+              {resolvedOrigin&&resolvedDest&&form.miles&&
+                <div style={{position:"absolute",right:8,top:"50%",transform:"translateY(-50%)",fontSize:11,color:"#3b82f6"}}>⚡</div>}
+            </div>
+            {resolvedOrigin&&resolvedDest&&form.miles&&
+              <div style={{fontSize:9,color:"#3b82f6",marginTop:3,fontFamily:"monospace"}}>{t.autoMiles(form.miles)}</div>}
+          </div>
+          <div>
+            <label style={lbl}>{t.labelDay}</label>
+            <select style={{...inp,cursor:"pointer"}} value={form.dayOfWeek} onChange={e=>set("dayOfWeek",e.target.value)}>
+              <option value="">{t.placeholderDay}</option>
+              {Object.entries(DAY_FACTORS).map(([k,d])=>(
+                <option key={k} value={k}>{t.days[k]} ×{d.f}</option>
+              ))}
+            </select>
+          </div>
+        </div>
+
+        {/* CURRENT LOCATION */}
+        <div style={{marginBottom:4}}>
+          <label style={lbl}>{t.labelCurrentLoc}</label>
+          <div style={{display:"flex",gap:8,alignItems:"flex-start"}}>
+            <div style={{flex:1,position:"relative"}}>
+              <input style={{...inp, borderColor: resolvedCurrent?"#a78bfa50":"#1e2438", paddingRight: resolvedCurrent?32:13}}
+                placeholder={t.placeholderCurrent}
+                value={currentLoc}
+                onChange={e=>{ setCurrentLoc(e.target.value); setResolvedCurrent(null); setCurrentCandidates([]); }}
+                onBlur={resolveCurrentField}/>
+              {geocoding==='current' && <div style={{position:"absolute",right:10,top:"50%",transform:"translateY(-50%)",width:14,height:14,border:"2px solid #1e2438",borderTop:"2px solid #a78bfa",borderRadius:"50%",animation:"spin .6s linear infinite"}}/>}
+              {resolvedCurrent && geocoding!=='current' && <div style={{position:"absolute",right:10,top:"50%",transform:"translateY(-50%)",fontSize:14,color:"#a78bfa"}}>✓</div>}
+            </div>
+            <button onClick={getGPSLocation} disabled={gpsLoading} style={{background:"#1a2438",border:"1px solid #2a3550",borderRadius:8,padding:"12px 14px",cursor:gpsLoading?"not-allowed":"pointer",color:gpsLoading?"#4a5578":"#a78bfa",fontWeight:800,fontSize:11,flexShrink:0,whiteSpace:"nowrap"}}>
+              {gpsLoading?"...":t.gpsBtn+" 📡"}
+            </button>
+          </div>
+          {resolvedCurrent && <div style={{fontSize:9,color:"#a78bfa",marginTop:3,fontFamily:"monospace"}}>{resolvedCurrent.displayName}</div>}
+          {resolvedCurrent && resolvedOrigin && form.deadhead!=="0" &&
+            <div style={{fontSize:9,color:"#a78bfa",marginTop:1,fontFamily:"monospace"}}>{t.autoDH(form.deadhead)}</div>}
+          {currentCandidates.length>0 && (
+            <div style={{background:"#0e1220",border:"1px solid #2a3450",borderRadius:6,marginTop:4,overflow:"hidden"}}>
+              <div style={{fontSize:9,color:"#4a5578",padding:"5px 9px",fontFamily:"monospace"}}>{t.geocodeAmbiguous}</div>
+              {currentCandidates.map((c,i)=>(
+                <div key={i} onClick={()=>pickCandidate('current',c)} style={{padding:"7px 9px",fontSize:11,cursor:"pointer",borderTop:"1px solid #1a2035",background:"transparent"}}>
+                  📍 {c.displayName}
+                </div>
+              ))}
+            </div>
+          )}
+        </div>
+
+        {/* OPERATION */}
+        <Divider title={t.sectionOp}/>
+        <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:10,marginBottom:4}}>
+          <div>
+            <label style={lbl}>{t.labelMC}</label>
+            <input style={inp} type="number" step="1" min="0" max="50" value={form.mcPct} onChange={e=>set("mcPct",e.target.value)}/>
+            <div style={{fontSize:10,color:"#4a5578",marginTop:3,fontFamily:"monospace"}}>{t.mcTypical}</div>
+          </div>
+          <div>
+            <label style={lbl}>{t.labelDeadhead}</label>
+            <input style={{...inp, borderColor: resolvedCurrent&&resolvedOrigin?"#a78bfa50":"#1e2438"}}
+              type="number" step="1" min="0" value={form.deadhead}
+              onChange={e=>set("deadhead",e.target.value)}/>
+            {resolvedCurrent&&resolvedOrigin&&parseFloat(form.deadhead)>0&&(
+              <div style={{fontSize:9,color:"#a78bfa",marginTop:2,fontFamily:"monospace"}}>{t.autoDH(form.deadhead)}</div>
+            )}
+            {parseFloat(form.deadhead)>0&&(
+              <div style={{fontSize:10,color:"#4a5578",marginTop:2,fontFamily:"monospace"}}>
+                {t.deadheadCost} ${(parseFloat(form.deadhead)*(parseFloat(form.costPerMi)||0.64)).toFixed(0)}
+              </div>
+            )}
+          </div>
+        </div>
+        <div style={{marginBottom:4}}>
+          <label style={lbl}>{t.labelCostPerMi}</label>
+          <input style={inp} type="number" step="0.01" min="0.30" max="2.00" value={form.costPerMi} onChange={e=>set("costPerMi",e.target.value)}/>
+          <div style={{fontSize:10,color:"#4a5578",marginTop:3,fontFamily:"monospace"}}>{t.costNote}</div>
+        </div>
+        <div style={{background:"rgba(96,165,250,.06)",border:"1px solid rgba(96,165,250,.15)",borderRadius:7,padding:"8px 11px",marginBottom:4,fontSize:10,color:"#5080a0",fontFamily:"monospace",lineHeight:1.7}}>
+          {t.totalFormula}{parseFloat(form.costPerMi)||0.64}{t.perMi}
+        </div>
+
+        {/* MC NOTE */}
+        <div style={{background:"rgba(240,192,64,.05)",border:"1px solid rgba(240,192,64,.15)",borderRadius:8,padding:"9px 12px",margin:"14px 0",fontSize:11,color:"#a08020",lineHeight:1.6}}>
+          💼 <strong>{t.mcNote}</strong> {t.mcNoteText}<br/>{t.mcNoteNet}
+        </div>
+
+        {error&&<div style={{background:"rgba(231,76,60,.1)",border:"1px solid #e74c3c",borderRadius:8,padding:"10px 12px",marginBottom:12,fontSize:12,color:"#e74c3c"}}>⚠️ {error}</div>}
+
+        <button onClick={analyze} disabled={loading} style={{
+          width:"100%",background:loading?"#1a2035":"#f0c040",color:loading?"#4a5578":"#000",
+          border:"none",borderRadius:8,padding:"14px",fontSize:16,fontWeight:900,letterSpacing:2,
+          cursor:loading?"not-allowed":"pointer",marginBottom:8,transition:"all .2s"
+        }}>
+          {loading ? t.btnAnalyzing : t.btnAnalyze}
+        </button>
+
+        {loading&&(
+          <div style={{display:"flex",flexDirection:"column",alignItems:"center",padding:"28px 0",gap:12}}>
+            <div style={{width:36,height:36,border:"3px solid #1e2438",borderTop:"3px solid #f0c040",borderRadius:"50%",animation:"spin .8s linear infinite"}}/>
+            <div style={{fontSize:11,color:"#4a5578",fontFamily:"monospace",letterSpacing:1}}>{t.btnAnalyzing}</div>
+          </div>
+        )}
+
+        {/* ═══════ RESULTS ═══════ */}
+        {result&&(
+          <div ref={resultsRef} className="fade-up">
+
+            {/* HOTSCORE */}
+            <Divider title={t.sectionZones}/>
+            <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:10,marginBottom:10}}>
+              {[
+                {lbl:t.labelOrigin, city:result.og.fullName, hs:result.oHS, cls:result.oCls},
+                {lbl:t.labelDest,   city:result.dg.fullName, hs:result.dHS, cls:result.dCls},
+              ].map(({lbl:l,city,hs,cls})=>(
+                <div key={l} style={{background:"#0b0f1c",border:`1px solid ${cls.color}25`,borderTop:`2px solid ${cls.color}`,borderRadius:8,padding:"12px 11px"}}>
+                  <div style={{fontSize:9,color:"#3a4560",letterSpacing:2,textTransform:"uppercase",marginBottom:5,fontFamily:"monospace"}}>{l}</div>
+                  <div style={{fontWeight:800,fontSize:13,marginBottom:8,lineHeight:1.2}}>{city}</div>
+                  <div style={{display:"flex",alignItems:"center",gap:8,marginBottom:8}}>
+                    <ScoreGauge score={hs.score}/>
+                    <div>
+                      <ZoneChip score={hs.score}/>
+                      <div style={{fontSize:10,color:"#4a5578",marginTop:5,fontFamily:"monospace",lineHeight:1.7}}>
+                        Hub: {hs.hub.name.split(",")[0]}<br/>
+                        {hs.dist<=hs.hub.radius
+                          ?<span style={{color:"#2ecc71"}}>{t.withinRadius}</span>
+                          :<span style={{color:"#e74c3c"}}>+{hs.d_extra}mi {t.outsideRadius}</span>}
+                        {hs.score<75 && hs.nearestGood && hs.milestoGood>0 && (
+                          <span style={{display:"block",marginTop:4,padding:"3px 6px",background:"rgba(240,192,64,.08)",borderRadius:4,border:"1px solid rgba(240,192,64,.2)",color:"#f0c040",lineHeight:1.5}}>
+                            {t.toGoodZone(hs.totalToGood)}<br/>
+                            <span style={{color:"#a08020",fontSize:9}}>{t.toGoodZoneHub(hs.nearestGood.name)}</span>
+                          </span>
+                        )}
+                        {hs.score<75 && hs.nearestGood && hs.milestoGood===0 && (
+                          <span style={{display:"block",marginTop:4,color:"#f39c12"}}>✓ {hs.nearestGood.name.split(",")[0]}</span>
+                        )}
+                      </div>
+                    </div>
+                  </div>
+                  <div style={{fontSize:10,color:"#4a5578",fontFamily:"monospace",background:"#060910",borderRadius:5,padding:"5px 8px"}}>
+                    score = max(60, {hs.hub.score}−0.1×{hs.d_extra}) = <span style={{color:cls.color,fontWeight:700}}>{hs.score}</span>
+                  </div>
+                </div>
+              ))}
+            </div>
+
+            {/* MPF ROW */}
+            <div style={{background:"#0b0f1c",border:"1px solid #1e2438",borderRadius:8,padding:"10px 13px",display:"flex",alignItems:"center",justifyContent:"space-between",marginBottom:4,flexWrap:"wrap",gap:8}}>
+              <div style={{display:"flex",alignItems:"center",gap:8,flexWrap:"wrap"}}>
+                <ZoneChip score={result.oHS.score}/>
+                <span style={{color:"#2a3450",fontSize:13}}>──▶</span>
+                <ZoneChip score={result.dHS.score}/>
+              </div>
+              <div style={{textAlign:"right"}}>
+                <div style={{fontSize:9,color:"#4a5578",fontFamily:"monospace",letterSpacing:1}}>{t.mpfLabel}</div>
+                <div style={{fontSize:24,fontWeight:900,color:"#f0c040"}}>{result.mpfVal.toFixed(2)}</div>
+              </div>
+            </div>
+
+            {/* CALC STEPS */}
+            <Divider title={t.sectionCalc}/>
+            <div style={{background:"#0b0f1c",border:`1px solid ${result.isRemote?"#f0c04040":"#1e2438"}`,borderRadius:8,padding:"12px",marginBottom:4,fontFamily:"monospace",fontSize:11,color:"#6b7ea8",lineHeight:1.9}}>
+              {result.isRemote && (
+                <div style={{background:"rgba(240,192,64,.1)",border:"1px solid rgba(240,192,64,.3)",borderRadius:5,padding:"5px 9px",marginBottom:8,color:"#f0c040",fontWeight:700,fontSize:10,letterSpacing:.5}}>
+                  {t.remoteZoneLabel}<br/>
+                  <span style={{fontWeight:400,color:"#a08020"}}>{t.remoteZoneFloor(result.worstDExtra, result.surchargeMin, result.surchargeGood, result.surchargeExc)}</span>
+                </div>
+              )}
+              <div>① {t.calcTable} {result.miles}mi → Min=${result.mr.low.toFixed(0)} / Max=${result.mr.high.toFixed(0)} / Range=${result.range.toFixed(0)}</div>
+              <div>② MPF ({result.oCls.icon}→{result.dCls.icon}) = {result.mpfVal}</div>
+              <div>③ {t.calcExc} = ${result.rawExc.toFixed(0)}</div>
+              <div style={{paddingLeft:12}}>{t.calcGood} = {result.mr.low.toFixed(0)} + {result.range.toFixed(0)}×{result.mpfVal} = <span style={{color:"#2ecc71"}}>${result.rawGood.toFixed(0)}</span></div>
+              <div style={{paddingLeft:12}}>{t.calcMin} = max({result.mr.low.toFixed(0)}, …) = <span style={{color:"#f39c12"}}>${result.rawMin.toFixed(0)}</span></div>
+              <div>④ × {t.days[result.dayKey]} ({result.df}) + {t.calcDay}</div>
+              {result.isRemote && (
+                <div style={{color:"#f0c040"}}>⑤ 🌵 +{result.worstDExtra}mi fuera → Min <span style={{color:"#f39c12"}}>+${result.surchargeMin}</span> · Bueno <span style={{color:"#2ecc71"}}>+${result.surchargeGood}</span> · Exc <span style={{color:"#60a5fa"}}>+${result.surchargeExc}</span></div>
+              )}
+              <div style={{color:"#f0c040",fontWeight:700}}>{result.isRemote?"⑥":"⑤"} {t.calcFinal} ${result.fExc} / ${result.fGood} / ${result.fMin}</div>
+              <div style={{borderTop:"1px solid #1e2438",marginTop:6,paddingTop:6,color:"#5080a0"}}>
+                {result.isRemote?"⑦":"⑥"} {t.calcCost} = ({result.miles}+{result.dhMiles})mi × ${result.costPerMi}/mi = <span style={{color:"#e74c3c"}}>${result.totalCost.toFixed(2)}</span>
+              </div>
+              <div style={{paddingLeft:12,color:"#5080a0"}}>
+                {t.calcNet}{(result.mcPct*100).toFixed(0)}%) − ${result.totalCost.toFixed(0)}
+              </div>
+            </div>
+
+            {/* VERDICT */}
+            {(()=>{
+              const v=VERDICT_CFG[result.verdict];
+              const msg={
+                accept: t.verdictMsgAccept(fmt(result.fGood),fmt(result.netGood),fmt(result.totalCost),result.marginPct(result.netGood)),
+                caution:t.verdictMsgCaution(fmt(result.fMin),fmt(result.netMin),fmt(result.totalCost)),
+                reject: t.verdictMsgReject(fmt(result.fExc),fmt(result.netExc)),
+              }[result.verdict];
+              return (
+                <>
+                  <Divider title={t.sectionVerdict}/>
+                  <div style={{background:v.bg,borderLeft:`4px solid ${v.border}`,borderRadius:8,padding:"14px 13px",marginBottom:4}}>
+                    <div style={{fontSize:10,fontWeight:800,letterSpacing:2,color:v.color,marginBottom:3}}>{v.icon} {v.label}</div>
+                    <div style={{fontSize:17,fontWeight:900,marginBottom:5}}>{result.og.fullName.split(",")[0]} → {result.dg.fullName.split(",")[0]}</div>
+                    <div style={{fontSize:12,color:"#8898b8",lineHeight:1.6}}>{msg}</div>
+                  </div>
+                </>
+              );
+            })()}
+
+            {/* RATE CARDS */}
+            <Divider title={t.sectionRates}/>
+            {[
+              {label:t.rateExcLabel,  sublabel:t.rateExcSub,  gross:result.fExc,  net:result.netExc,  netNoDH:result.netExcNoDH,  color:"#f0c040"},
+              {label:t.rateGoodLabel, sublabel:t.rateGoodSub, gross:result.fGood, net:result.netGood, netNoDH:result.netGoodNoDH, color:"#2ecc71", highlight:true},
+              {label:t.rateMinLabel,  sublabel:t.rateMinSub,  gross:result.fMin,  net:result.netMin,  netNoDH:result.netMinNoDH,  color:"#f39c12"},
+            ].map(({label,sublabel,gross,net,netNoDH,color,highlight})=>{
+              const mcFee=Math.round(gross*result.mcPct);
+              const margin=result.marginPct(net);
+              const marginNoDH=((netNoDH/result.totalCostNoDH-1)*100).toFixed(1);
+              const marginColor=n=>parseFloat(n)>=30?"#2ecc71":parseFloat(n)>=10?"#f39c12":"#e74c3c";
+              return (
+                <div key={label} style={{background:highlight?`${color}0a`:"#0b0f1c",border:`1px solid ${highlight?color+"44":"#1e2438"}`,borderLeft:`3px solid ${color}`,borderRadius:8,padding:"13px",marginBottom:8}}>
+                  <div style={{display:"flex",justifyContent:"space-between",alignItems:"flex-start",gap:8}}>
+                    <div style={{flex:1}}>
+                      <div style={{fontSize:11,fontWeight:700,color,marginBottom:2}}>{label}</div>
+                      <div style={{fontSize:10,color:"#4a5578",lineHeight:1.4,marginBottom:6}}>{sublabel}</div>
+                      <div style={{display:"flex",gap:8,flexWrap:"wrap"}}>
+                        {[[t.rpmBrutoLabel,"#c8d0e8",result.rpmBruto(gross)],[t.rpmNetoLabel,color,result.rpmNeto(net)],[t.margenLabel,marginColor(margin),margin+"%"]].map(([lx,cx,vx])=>(
+                          <div key={lx} style={{background:"#060910",borderRadius:4,padding:"3px 7px"}}>
+                            <span style={{fontSize:9,color:"#4a5578",fontFamily:"monospace"}}>{lx} </span>
+                            <span style={{fontSize:11,color:cx,fontFamily:"monospace",fontWeight:700}}>{lx===t.rpmBrutoLabel||lx===t.rpmNetoLabel?"$":""}{vx}</span>
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+                    {/* Gross column */}
+                    <div style={{textAlign:"right",flexShrink:0}}>
+                      <div style={{fontSize:9,color:"#4a5578",fontFamily:"monospace"}}>{t.grossLabel}</div>
+                      <div style={{fontSize:24,fontWeight:900,color,lineHeight:1}}>{fmt(gross)}</div>
+                      <div style={{fontSize:10,color:"#4a5578",fontFamily:"monospace",marginTop:3}}>− {t.mcFeeLabel} {fmt(mcFee)}</div>
+                      {/* With DH */}
+                      <div style={{marginTop:6,paddingTop:5,borderTop:"1px solid #1a2035"}}>
+                        <div style={{fontSize:8,color:"#3a4560",fontFamily:"monospace",letterSpacing:.5}}>{t.withDH}</div>
+                        <div style={{fontSize:10,color:"#4a5578",fontFamily:"monospace"}}>− {lang==='es'?'costos':'costs'} {fmt(result.totalCost)}</div>
+                        <div style={{fontSize:13,fontWeight:800,marginTop:2}}>= <span style={{color}}>{fmt(net)}</span></div>
+                        <div style={{fontSize:9,color:marginColor(margin),fontFamily:"monospace"}}>{margin}% margen</div>
+                      </div>
+                      {/* Without DH — only show if dhMiles > 0 */}
+                      {result.dhMiles > 0 && (
+                        <div style={{marginTop:5,paddingTop:5,borderTop:"1px solid #1a2035"}}>
+                          <div style={{fontSize:8,color:"#3a4560",fontFamily:"monospace",letterSpacing:.5}}>{t.withoutDH}</div>
+                          <div style={{fontSize:10,color:"#4a5578",fontFamily:"monospace"}}>− {lang==='es'?'costos':'costs'} {fmt(result.totalCostNoDH)}</div>
+                          <div style={{fontSize:13,fontWeight:800,marginTop:2}}>= <span style={{color:"#60a5fa"}}>{fmt(netNoDH)}</span></div>
+                          <div style={{fontSize:9,color:marginColor(marginNoDH),fontFamily:"monospace"}}>{marginNoDH}% margen</div>
+                        </div>
+                      )}
+                    </div>
+                  </div>
+                </div>
+              );
+            })}
+
+            {/* COSTS */}
+            <Divider title={t.sectionCosts}/>
+            <div style={{background:"#0b0f1c",border:"1px solid #1e2438",borderRadius:8,overflow:"hidden",marginBottom:4}}>
+              <InfoRow label={t.costFuel} value={fmt(result.fuelInfo)} sub={`${(result.miles/14).toFixed(1)}gal × $3.50 — ${t.costFuelSub}`} valueColor="#6b7ea8"/>
+              <InfoRow label={t.costTrip} value={`${result.miles} mi`} sub={t.costTripSub}/>
+              <InfoRow label={t.costDH}   value={result.dhMiles>0?`${result.dhMiles} mi`:"0 mi"} sub={result.dhMiles>0?t.costDHSub:t.costDHNone}/>
+              <InfoRow label={t.costTotal} value={fmt(result.totalCost)} sub={`(${result.miles}+${result.dhMiles})mi × $${result.costPerMi}/mi`} valueColor="#e74c3c" big/>
+            </div>
+
+            {/* REPOSITION */}
+            {(result.needsORepo||result.needsDRepo)&&(
+              <>
+                <Divider title={t.sectionRepo}/>
+                {result.needsORepo&&(
+                  <div style={{background:"rgba(231,76,60,.07)",border:"1px solid rgba(231,76,60,.25)",borderRadius:8,padding:"12px 13px",marginBottom:8}}>
+                    <div style={{fontSize:11,fontWeight:700,color:"#e74c3c",marginBottom:8}}>
+                      🔴 {t.repoOriginWeak} ({result.oHS.score}) — {t.repoOriginTip}
+                    </div>
+                    {result.oRepo.map((h,i)=>(
+                      <div key={i} style={{display:"flex",justifyContent:"space-between",alignItems:"center",padding:"7px 0",borderBottom:i<result.oRepo.length-1?"1px solid rgba(255,255,255,.05)":"none"}}>
+                        <div>
+                          <div style={{fontSize:12,fontWeight:600}}>{h.name}</div>
+                          <div style={{fontSize:10,color:"#4a5578",fontFamily:"monospace"}}>{h.dist} {t.repoMiles}</div>
+                        </div>
+                        <div style={{fontSize:15,fontWeight:900,color:h.score>=85?"#2ecc71":h.score>=75?"#f39c12":"#e74c3c"}}>⚡{h.score}</div>
+                      </div>
+                    ))}
+                  </div>
+                )}
+                {result.needsDRepo&&(
+                  <div style={{background:"rgba(243,156,18,.07)",border:"1px solid rgba(243,156,18,.25)",borderRadius:8,padding:"12px 13px"}}>
+                    <div style={{fontSize:11,fontWeight:700,color:"#f39c12",marginBottom:8}}>
+                      ⚠️ {t.repoDestWeak} ({result.dHS.score}) — {t.repoDestTip}
+                    </div>
+                    {result.dRepo.map((h,i)=>(
+                      <div key={i} style={{display:"flex",justifyContent:"space-between",alignItems:"center",padding:"7px 0",borderBottom:i<result.dRepo.length-1?"1px solid rgba(255,255,255,.05)":"none"}}>
+                        <div>
+                          <div style={{fontSize:12,fontWeight:600}}>{h.name}</div>
+                          <div style={{fontSize:10,color:"#4a5578",fontFamily:"monospace"}}>{h.dist} {t.repoMiles}</div>
+                        </div>
+                        <div style={{fontSize:15,fontWeight:900,color:h.score>=85?"#2ecc71":h.score>=75?"#f39c12":"#e74c3c"}}>⚡{h.score}</div>
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </>
+            )}
+
+            <div style={{height:20}}/>
+          </div>
+        )}
+
+        {/* WEATHER + REST AREAS SECTION */}
+        <WeatherSection
+          originCity={form.originCity}
+          destCity={form.destCity}
+          resolvedOrigin={resolvedOrigin}
+          resolvedDest={resolvedDest}
+          t={t}
+        />
+
+      </div>
+    </div>
+  );
+}
+
+// ═══════════════════════════════════════════════════════════════════════════
+// ██████████████  WEATHER ENGINE  ██████████████
+// ═══════════════════════════════════════════════════════════════════════════
+
+// ── State bounding boxes (lon_min, lat_min, lon_max, lat_max) ─────────────
+const STATE_BOXES = [
+  {s:"AL",b:[-88.47,30.14,-84.89,35.01]},{s:"AR",b:[-94.62,33.00,-89.65,36.50]},
+  {s:"GA",b:[-85.61,30.36,-80.84,35.00]},{s:"IL",b:[-91.51,36.97,-87.02,42.51]},
+  {s:"IN",b:[-88.10,37.77,-84.79,41.76]},{s:"IA",b:[-96.64,40.38,-90.14,43.50]},
+  {s:"KS",b:[-102.05,36.99,-94.59,40.00]},{s:"KY",b:[-89.57,36.50,-81.96,39.15]},
+  {s:"MD",b:[-79.49,37.91,-75.05,39.72]},{s:"MI",b:[-90.42,41.70,-82.41,48.30]},
+  {s:"MN",b:[-97.24,43.50,-89.49,49.38]},{s:"MO",b:[-95.77,35.99,-89.10,40.61]},
+  {s:"MS",b:[-91.65,30.17,-88.10,34.99]},{s:"NE",b:[-104.05,39.99,-95.31,43.00]},
+  {s:"OH",b:[-84.82,38.40,-80.52,41.98]},{s:"PA",b:[-80.52,39.72,-74.69,42.27]},
+  {s:"TN",b:[-90.31,34.98,-81.65,36.68]},{s:"VA",b:[-83.68,36.54,-75.24,39.47]},
+  {s:"WI",b:[-92.89,42.49,-86.25,47.08]},{s:"WV",b:[-82.64,37.20,-77.72,40.64]},
+  // Extended coverage
+  {s:"NC",b:[-84.32,33.84,-75.46,36.59]},{s:"SC",b:[-83.35,32.05,-78.54,35.22]},
+  {s:"FL",b:[-87.63,24.52,-80.03,31.00]},{s:"TX",b:[-106.65,25.84,-93.51,36.50]},
+  {s:"OK",b:[-103.00,33.62,-94.43,37.00]},{s:"CO",b:[-109.06,36.99,-102.04,41.00]},
+  {s:"ND",b:[-104.05,45.94,-96.55,49.00]},{s:"SD",b:[-104.06,42.48,-96.44,45.94]},
+  {s:"WY",b:[-111.05,40.99,-104.05,45.01]},{s:"MT",b:[-116.05,44.36,-104.04,49.00]},
+  {s:"NY",b:[-79.76,40.50,-71.86,45.01]},{s:"NJ",b:[-75.56,38.93,-73.89,41.36]},
+  {s:"DE",b:[-75.79,38.45,-75.05,39.84]},{s:"CT",b:[-73.73,41.00,-71.79,42.05]},
+  {s:"MA",b:[-73.51,41.24,-69.93,42.89]},{s:"RI",b:[-71.91,41.15,-71.12,42.02]},
+  {s:"NH",b:[-72.56,42.70,-70.61,45.31]},{s:"VT",b:[-73.44,42.73,-71.46,45.02]},
+  {s:"ME",b:[-71.08,43.06,-66.95,47.46]},{s:"PA",b:[-80.52,39.72,-74.69,42.27]},
+];
+
+// ── Decode Google encoded polyline ────────────────────────────────────────
+function decodePolyline(encoded) {
+  const poly = [];
+  let index = 0, lat = 0, lng = 0;
+  while (index < encoded.length) {
+    let b, shift = 0, result = 0;
+    do { b = encoded.charCodeAt(index++) - 63; result |= (b & 0x1f) << shift; shift += 5; } while (b >= 0x20);
+    lat += (result & 1) ? ~(result >> 1) : (result >> 1);
+    shift = 0; result = 0;
+    do { b = encoded.charCodeAt(index++) - 63; result |= (b & 0x1f) << shift; shift += 5; } while (b >= 0x20);
+    lng += (result & 1) ? ~(result >> 1) : (result >> 1);
+    poly.push([lat / 1e5, lng / 1e5]);
+  }
+  return poly;
+}
+
+// ── Haversine ─────────────────────────────────────────────────────────────
+function wxHaversine(lat1,lon1,lat2,lon2){
+  const R=3958.8, dLat=(lat2-lat1)*Math.PI/180, dLon=(lon2-lon1)*Math.PI/180;
+  const a=Math.sin(dLat/2)**2+Math.cos(lat1*Math.PI/180)*Math.cos(lat2*Math.PI/180)*Math.sin(dLon/2)**2;
+  return R*2*Math.atan2(Math.sqrt(a),Math.sqrt(1-a));
+}
+
+// ── Sample route points every N miles (max 25) ────────────────────────────
+function sampleRoutePoints(points, maxPoints = 20) {
+  if (points.length < 2) return [{ lat: points[0][0], lon: points[0][1], mile: 0 }];
+  // Compute cumulative distances
+  const cumDist = [0];
+  for (let i = 1; i < points.length; i++) {
+    cumDist.push(cumDist[i-1] + wxHaversine(points[i-1][0], points[i-1][1], points[i][0], points[i][1]));
+  }
+  const totalDist = cumDist[cumDist.length - 1];
+  const step = totalDist / (maxPoints - 1);
+  const samples = [];
+  for (let s = 0; s < maxPoints; s++) {
+    const targetDist = s * step;
+    // Find segment
+    let idx = cumDist.findIndex(d => d >= targetDist);
+    if (idx <= 0) idx = 1;
+    if (idx >= points.length) idx = points.length - 1;
+    // Interpolate
+    const segStart = cumDist[idx-1], segEnd = cumDist[idx];
+    const t = segEnd > segStart ? (targetDist - segStart) / (segEnd - segStart) : 0;
+    const lat = points[idx-1][0] + t * (points[idx][0] - points[idx-1][0]);
+    const lon = points[idx-1][1] + t * (points[idx][1] - points[idx-1][1]);
+    samples.push({ lat: +lat.toFixed(4), lon: +lon.toFixed(4), mile: Math.round(targetDist) });
+  }
+  return samples;
+}
+
+// ── Get state for a lat/lon (local bounding box lookup) ───────────────────
+function getStateForPoint(lat, lon) {
+  const matches = STATE_BOXES.filter(({ b }) => lon >= b[0] && lat >= b[1] && lon <= b[2] && lat <= b[3]);
+  if (matches.length === 0) return 'XX';
+  // If multiple matches (overlapping boxes), pick smallest area
+  matches.sort((a, b_) => {
+    const aA = (a.b[2]-a.b[0])*(a.b[3]-a.b[1]);
+    const bA = (b_.b[2]-b_.b[0])*(b_.b[3]-b_.b[1]);
+    return aA - bA;
+  });
+  return matches[0].s;
+}
+
+// ── Geocode city → {lat,lon} via new geocodeCity (reuses cache) ──────────
+async function wxGeocode(city) {
+  const result = await geocodeCity(city);
+  return { lat: result.lat, lon: result.lon };
+}
+
+// ── Build route points using straight-line interpolation (no Mapbox needed)
+// For a real driving route we use Claude to generate waypoints
+async function getRoutePoints(originCity, destCity) {
+  for (let attempt = 0; attempt < 3; attempt++) {
+    try {
+      const res = await fetch("https://api.anthropic.com/v1/messages", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          model: "claude-sonnet-4-20250514", max_tokens: 600,
+          messages: [{ role: "user", content:
+            `You are a US driving route expert. Given origin "${originCity}" and destination "${destCity}", return a JSON array of 12-18 realistic waypoints along the most direct highway route between them (in driving order). Include major highway junction cities/towns.
+Format: [{"lat":number,"lon":number,"name":"City, ST"}]
+Only return the JSON array. No markdown. Include origin as first point and destination as last.` }]
+        })
+      });
+      if (!res.ok) throw new Error(`HTTP ${res.status}`);
+      const d = await res.json();
+      const txt = d.content.map(i => i.text||"").join("").replace(/```json|```/g,"").trim();
+      const waypoints = JSON.parse(txt);
+      return waypoints.map(w => [w.lat, w.lon]);
+    } catch(e) {
+      if (attempt === 2) throw new Error(`Route failed: ${e.message}`);
+      await new Promise(r => setTimeout(r, 1000 * (attempt + 1)));
+    }
+  }
+}
+
+// ── Weather forecast cache ────────────────────────────────────────────────
+const wxCache = {};
+
+// ── Batch forecast ALL route points in a single Claude call ──────────────
+async function batchForecastAllPoints(samples, date) {
+  // Deduplicate coords by rounding to 1 decimal
+  const seen = {};
+  const uniqueCoords = []; // [{lat, lon, state}]
+  const sampleToCoordIdx = []; // parallel to samples
+
+  for (const s of samples) {
+    const key = `${s.lat.toFixed(1)},${s.lon.toFixed(1)}`;
+    if (seen[key] === undefined) {
+      seen[key] = uniqueCoords.length; // 0-based index
+      uniqueCoords.push({ lat: s.lat, lon: s.lon, state: s.state });
+    }
+    sampleToCoordIdx.push(seen[key]);
+  }
+
+  const pointsList = uniqueCoords.map((c, i) =>
+    `${i+1}. lat=${c.lat.toFixed(2)} lon=${c.lon.toFixed(2)} state=${c.state}`
+  ).join('\n');
+
+  const dateObj = new Date(date + 'T12:00:00');
+  const monthName = dateObj.toLocaleString('en-US', { month:'long' });
+  const year = dateObj.getFullYear();
+
+  const prompt =
+`You are a precise weather forecasting API for US truck drivers planning routes.
+
+Date: ${date} (${monthName} ${year})
+Task: Provide realistic weather forecasts for ${uniqueCoords.length} locations along a US driving route.
+
+Rules:
+- Use actual seasonal climate patterns for each location's latitude/longitude
+- Consider regional geography (Great Lakes effect, Appalachian elevation, Gulf moisture, etc.)
+- ${monthName} context: apply correct seasonal expectations
+- ALL numeric fields must be integers or floats — never null or strings
+- If there are active weather warnings/watches for that state, include them in "alerts" array
+- Return EXACTLY ${uniqueCoords.length} objects in the same order as input
+
+Locations:
+${pointsList}
+
+Return ONLY a raw JSON array, no markdown fences, no explanation:
+[{"tempMax":INT,"tempMin":INT,"precip":FLOAT,"snowfall":FLOAT,"windMax":INT,"windGusts":INT,"condition":"Clear|Cloudy|Rain|Snow|Freezing Rain|Sleet|Blizzard|Fog|Windy","desc":"4-word description","alerts":[]},...]`;
+
+  // Retry helper for Claude API calls
+  async function claudeFetch(body, retries = 2) {
+    for (let attempt = 0; attempt <= retries; attempt++) {
+      try {
+        const res = await fetch("https://api.anthropic.com/v1/messages", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify(body)
+        });
+        if (!res.ok) {
+          const errText = await res.text();
+          throw new Error(`API ${res.status}: ${errText.slice(0,200)}`);
+        }
+        return await res.json();
+      } catch(e) {
+        if (attempt === retries) throw e;
+        await new Promise(r => setTimeout(r, 1000 * (attempt + 1))); // wait 1s, 2s
+      }
+    }
+  }
+
+  try {
+    const d = await claudeFetch({
+      model: "claude-sonnet-4-20250514",
+      max_tokens: 3000,
+      messages: [{ role: "user", content: prompt }]
+    });
+
+    // Handle API-level errors
+    if (d.error) throw new Error(`Claude error: ${d.error.message || JSON.stringify(d.error)}`);
+
+    const rawText = d.content.map(i => i.text || "").join("").trim();
+
+    // Strip any markdown fences
+    const jsonText = rawText.replace(/^```[a-z]*\n?/i, "").replace(/\n?```$/,"").trim();
+
+    let forecasts;
+    try {
+      forecasts = JSON.parse(jsonText);
+    } catch(parseErr) {
+      throw new Error(`JSON parse failed. Raw: ${jsonText.slice(0,300)}`);
+    }
+
+    if (!Array.isArray(forecasts)) throw new Error(`Expected array, got: ${typeof forecasts}`);
+
+    // Map back: each sample gets the forecast from its coord index
+    for (let i = 0; i < samples.length; i++) {
+      const coordIdx = sampleToCoordIdx[i];
+      const f = forecasts[coordIdx];
+      if (f) {
+        // Extract alerts from Claude's response and cache them
+        if (f.alerts && f.alerts.length > 0) {
+          const st = uniqueCoords[coordIdx]?.state;
+          if (st) alertCache[st] = f.alerts.map(a => typeof a === 'string' ? {event:a} : a);
+        }
+        samples[i].forecast = {
+          date,
+          tempMax:     typeof f.tempMax   === 'number' ? f.tempMax   : 45,
+          tempMin:     typeof f.tempMin   === 'number' ? f.tempMin   : 28,
+          precip:      typeof f.precip    === 'number' ? f.precip    : 0,
+          snowfall:    typeof f.snowfall  === 'number' ? f.snowfall  : 0,
+          windMax:     typeof f.windMax   === 'number' ? f.windMax   : 10,
+          windGusts:   typeof f.windGusts === 'number' ? f.windGusts : 15,
+          condition:   f.condition || 'Cloudy',
+          description: f.desc || '',
+        };
+      } else {
+        samples[i].forecast = null;
+        console.warn(`[WX] No forecast for sample ${i} (coordIdx=${coordIdx}, forecasts.length=${forecasts.length})`);
+      }
+    }
+
+    const gotData = samples.filter(s => s.forecast !== null).length;
+    console.log(`[WX] Batch complete: ${gotData}/${samples.length} samples with data`);
+
+  } catch(e) {
+    const msg = `[WX BATCH ERROR] ${e.message}`;
+    console.error(msg);
+    // Propagate so UI can show the real error
+    samples.forEach(s => { s.forecast = null; s.wxError = e.message; });
+    throw e; // re-throw so checkWeather catches it
+  }
+}
+
+// ── Fetch alerts via Claude (no external API needed) ─────────────────────
+const alertCache = {};
+async function getAlertsForState(stateCode) {
+  // Return empty — alerts are now included in the Claude weather forecast prompt
+  return alertCache[stateCode] || [];
+}
+
+// ── Compute risk score 0–10 ───────────────────────────────────────────────
+function computeRisk(forecast, alerts = []) {
+  if (!forecast) return { score: 0, reasons: ['No data'] };
+  let score = 0;
+  const reasons = [];
+  const severe = alerts.filter(a => /Warning|Watch/i.test(a.event||''));
+  if (severe.length > 0)         { score += 3; reasons.push(`⚠️ ${severe[0].event}`); }
+  if ((forecast.tempMin??99) <= 32 && (forecast.precip??0) > 0)
+                                  { score += 2; reasons.push(`🧊 Ice risk ${forecast.tempMin}°F`); }
+  if ((forecast.snowfall??0) >= 0.5){ score += 2; reasons.push(`❄️ Snow ${forecast.snowfall?.toFixed(1)}"`); }
+  if ((forecast.windGusts??0) >= 35){ score += 2; reasons.push(`💨 Gusts ${forecast.windGusts}mph`); }
+  if ((forecast.precip??0) >= 0.25) { score += 1; reasons.push(`🌧️ Rain ${forecast.precip?.toFixed(2)}"`); }
+  if ((forecast.tempMin??99) < 20)  { score += 1; reasons.push(`🥶 ${forecast.tempMin}°F`); }
+  return { score: Math.min(10, score), reasons };
+}
+
+// ── Aggregate samples by state ────────────────────────────────────────────
+function aggregateByState(samples) {
+  const stateMap = {};
+  const stateOrder = [];
+  for (const s of samples) {
+    const st = s.state || 'XX';
+    if (!stateMap[st]) { stateMap[st] = { state: st, samples: [] }; stateOrder.push(st); }
+    stateMap[st].samples.push(s);
+  }
+  return stateOrder.map(st => {
+    const group = stateMap[st];
+    const scores  = group.samples.map(s => s.risk?.score || 0);
+    const maxScore = Math.max(...scores);
+    const allReasons = [...new Set(group.samples.flatMap(s => s.risk?.reasons || []))];
+
+    // Aggregate forecast values — only from samples that have data
+    const withData = group.samples.filter(s => s.forecast !== null && s.forecast !== undefined);
+    const tempMin  = withData.length > 0 ? Math.min(...withData.map(s => s.forecast.tempMin ?? 999)) : null;
+    const tempMax  = withData.length > 0 ? Math.max(...withData.map(s => s.forecast.tempMax ?? -999)) : null;
+    const snowfall = withData.length > 0 ? Math.max(...withData.map(s => s.forecast.snowfall ?? 0))  : null;
+    const windGusts= withData.length > 0 ? Math.max(...withData.map(s => s.forecast.windGusts ?? 0)) : null;
+    const precip   = withData.length > 0 ? Math.max(...withData.map(s => s.forecast.precip ?? 0))    : null;
+    const hasData  = withData.length > 0;
+
+    // Pick the worst condition among samples with data
+    const CONDITION_RANK = {'Blizzard':10,'Freezing Rain':9,'Sleet':8,'Snow':7,'Ice':7,'Fog':6,'Thunderstorm':6,'Rain':5,'Windy':4,'Cloudy':2,'Clear':1};
+    let worstCondition = 'Clear', worstDesc = '';
+    let worstRank = 0;
+    for (const s of withData) {
+      const rank = CONDITION_RANK[s.forecast.condition] || 0;
+      if (rank > worstRank) { worstRank = rank; worstCondition = s.forecast.condition; worstDesc = s.forecast.description || ''; }
+    }
+    const COND_ICON = {'Blizzard':'🌨','Freezing Rain':'🌧','Sleet':'🌨','Snow':'❄️','Fog':'🌫','Thunderstorm':'⛈','Rain':'🌧','Windy':'💨','Cloudy':'☁️','Clear':'☀️'};
+
+    return {
+      state: st,
+      maxScore,
+      reasons: allReasons.slice(0, 4),
+      milesRange: `${group.samples[0].mile}–${group.samples[group.samples.length-1].mile}mi`,
+      hasData,
+      dataCount: withData.length,
+      totalCount: group.samples.length,
+      tempMin:   tempMin !== 999  ? tempMin  : null,
+      tempMax:   tempMax !== -999 ? tempMax  : null,
+      snowfall, windGusts, precip,
+      condition: worstCondition,
+      conditionIcon: COND_ICON[worstCondition] || '🌤',
+      description: worstDesc,
+    };
+  });
+}
+
+// ══════════════════════════════════════════════════════════════════════════
+// WEATHER UI COMPONENT
+// ══════════════════════════════════════════════════════════════════════════
+function WeatherSection({ originCity, destCity, resolvedOrigin, resolvedDest, t }) {
+  const [wxDate,    setWxDate]    = useState('');
+  const [wxHour,    setWxHour]    = useState('');
+  const [wxLoading, setWxLoading] = useState(false);
+  const [wxResult,  setWxResult]  = useState(null);
+  const [wxError,   setWxError]   = useState('');
+  const [wxStep,    setWxStep]    = useState('');
+  const [activeTab, setActiveTab] = useState('weather'); // 'weather' | 'rest'
+  const [restAreas, setRestAreas] = useState(null);
+  const [restLoading,setRestLoading]= useState(false);
+  const wxRef = useRef(null);
+
+  useEffect(() => {
+    const today = new Date().toISOString().split('T')[0];
+    setWxDate(today);
+  }, []);
+
+  // Reset when route changes
+  useEffect(() => { setWxResult(null); setRestAreas(null); }, [originCity, destCity]);
+
+  async function checkWeather() {
+    if (!originCity?.trim() || !destCity?.trim()) return setWxError(t.wxErrCities);
+    if (!wxDate) return setWxError(t.wxErrDate);
+    setWxError(''); setWxResult(null); setWxLoading(true); setRestAreas(null);
+
+    try {
+      setWxStep(t.wxStepRoute);
+
+      // Use resolved coords if available for more precise waypoints
+      const originLabel = resolvedOrigin ? resolvedOrigin.displayName : originCity;
+      const destLabel   = resolvedDest   ? resolvedDest.displayName   : destCity;
+
+      const routePoints = await getRoutePoints(originLabel, destLabel);
+
+      setWxStep(t.wxStepSample);
+      const samples = sampleRoutePoints(routePoints, 12);
+      samples.forEach(s => { s.state = getStateForPoint(s.lat, s.lon); });
+
+      const uniqueStates = [...new Set(samples.map(s => s.state).filter(s => s !== 'XX'))];
+
+      setWxStep(t.wxStepForecast(samples.length));
+
+      const alertsByState = {};
+      await Promise.all(uniqueStates.map(async st => {
+        alertsByState[st] = await getAlertsForState(st);
+      }));
+
+      let batchError = null;
+      try {
+        await batchForecastAllPoints(samples, wxDate);
+      } catch(e) {
+        batchError = e.message;
+        setWxStep(`⚠️ ${e.message.slice(0,80)}`);
+      }
+
+      samples.forEach(s => {
+        const stAlerts = alertsByState[s.state] || [];
+        s.risk = computeRisk(s.forecast, stAlerts);
+      });
+
+      const byState = aggregateByState(samples);
+      byState.forEach(st => { st.alerts = alertsByState[st.state] || []; });
+
+      const globalScore = byState.length > 0 ? Math.max(...byState.map(s => s.maxScore)) : 0;
+      const samplesWithData = samples.filter(s => s.forecast !== null).length;
+      const recommendation = globalScore >= 6 ? t.wxAvoid : globalScore >= 3 ? t.wxCaution : t.wxOK;
+      const recColor = globalScore >= 6 ? '#e74c3c' : globalScore >= 3 ? '#f39c12' : '#2ecc71';
+      const topRisk = [...samples].sort((a,b) => (b.risk?.score||0)-(a.risk?.score||0)).slice(0, 3);
+
+      setWxResult({ byState, globalScore, recommendation, recColor, topRisk, samples, uniqueStates, wxDate, wxHour, samplesWithData, batchError, routePoints });
+
+      // Kick off rest areas in background
+      const destLat = resolvedDest?.lat ?? samples[samples.length-1]?.lat;
+      const destLon = resolvedDest?.lon ?? samples[samples.length-1]?.lon;
+      const oName = resolvedOrigin?.displayName || originCity;
+      const dName = resolvedDest?.displayName   || destCity;
+      if (destLat && destLon) {
+        setRestLoading(true);
+        fetchRestAreas(samples, destLat, destLon, oName, dName)
+          .then(areas => { setRestAreas(annotateRestAreas(areas)); setRestLoading(false); })
+          .catch(() => { setRestAreas([]); setRestLoading(false); });
+      }
+
+      setTimeout(() => wxRef.current?.scrollIntoView({ behavior:'smooth', block:'start' }), 100);
+    } catch(e) {
+      setWxError(`${t.wxErrGeneral}: ${e.message||''}`);
+    }
+    setWxLoading(false); setWxStep('');
+  }
+
+  const inp2 = {
+    background:"#0b0f1c", border:"1px solid #1e2438", borderRadius:7,
+    color:"#c8d0e8", fontSize:14, padding:"11px 12px", outline:"none",
+    fontFamily:"inherit", width:"100%"
+  };
+  const lbl2 = { fontSize:10, color:"#4a5578", letterSpacing:1.5, marginBottom:5,
+    display:"block", fontWeight:700, textTransform:"uppercase" };
+
+  const riskColor = s => s >= 7 ? '#e74c3c' : s >= 4 ? '#f39c12' : s >= 1 ? '#f0c040' : '#2ecc71';
+  const riskBg    = s => s >= 7 ? 'rgba(231,76,60,.10)' : s >= 4 ? 'rgba(243,156,18,.08)' : s >= 1 ? 'rgba(240,192,64,.06)' : 'rgba(46,204,113,.06)';
+
+  return (
+    <div ref={wxRef} style={{marginTop:8}}>
+      {/* TABS */}
+      <div style={{display:"flex",gap:0,margin:"24px 0 14px",background:"#0b0f1c",borderRadius:10,padding:4,border:"1px solid #1a2035"}}>
+        {[
+          {id:'weather', label: t.sectionWeather},
+          {id:'finder',  label: t.sectionFinder},
+        ].map(tab=>(
+          <button key={tab.id} onClick={()=>setActiveTab(tab.id)} style={{
+            flex:1, border:"none", borderRadius:7, padding:"10px 8px",
+            fontSize:11, fontWeight:800, cursor:"pointer", letterSpacing:.3,
+            background: activeTab===tab.id ? "linear-gradient(135deg,#1a3060,#1e3a8a)" : "transparent",
+            color: activeTab===tab.id ? "#7bb3f0" : "#3a4560",
+            borderBottom: activeTab===tab.id ? "2px solid #3b82f6" : "2px solid transparent",
+            transition:"all .2s"
+          }}>{tab.label}</button>
+        ))}
+      </div>
+
+      {/* REST AREA FINDER TAB */}
+      {activeTab==='finder' && (
+        <div style={{background:"#0b0f1c",border:"1px solid #1e2438",borderRadius:10,padding:"14px",marginBottom:10}}>
+          <RestAreaFinder t={t} lang={lang}/>
+        </div>
+      )}
+
+      {/* WEATHER TAB */}
+      {activeTab==='weather' && (<>
+        <div style={{background:"#0b0f1c",border:"1px solid #1e2438",borderRadius:10,padding:"14px",marginBottom:10}}>
+        <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:10,marginBottom:10}}>
+          <div>
+            <label style={lbl2}>{t.wxDate}</label>
+            <input style={inp2} type="date" value={wxDate} onChange={e=>setWxDate(e.target.value)}
+              min={new Date().toISOString().split('T')[0]}/>
+          </div>
+          <div>
+            <label style={lbl2}>{t.wxTime}</label>
+            <input style={inp2} type="time" value={wxHour} onChange={e=>setWxHour(e.target.value)} placeholder="06:00"/>
+          </div>
+        </div>
+        <div style={{fontSize:10,color:"#3a4560",fontFamily:"monospace",marginBottom:10}}>
+          {t.wxRoute} {originCity||'—'} → {destCity||'—'}
+        </div>
+        <button onClick={checkWeather} disabled={wxLoading} style={{
+          width:"100%", background:wxLoading?"#1a2035":"#3b82f6",
+          color:wxLoading?"#4a5578":"#fff", border:"none", borderRadius:8,
+          padding:"12px", fontSize:14, fontWeight:800, letterSpacing:1.5,
+          cursor:wxLoading?"not-allowed":"pointer", transition:"all .2s"
+        }}>
+          {wxLoading ? wxStep || t.wxBtnLoading : t.wxBtn}
+        </button>
+        </div>{/* end weather inputs card */}
+
+      {wxError && <div style={{background:"rgba(231,76,60,.1)",border:"1px solid #e74c3c",borderRadius:8,padding:"10px 12px",marginBottom:10,fontSize:12,color:"#e74c3c"}}>⚠️ {wxError}</div>}
+
+      {wxLoading && (
+        <div style={{background:"#0b0f1c",border:"1px solid #1e2438",borderRadius:8,padding:"20px",textAlign:"center"}}>
+          <div style={{width:32,height:32,border:"3px solid #1e2438",borderTop:"3px solid #3b82f6",borderRadius:"50%",animation:"spin .8s linear infinite",margin:"0 auto 10px"}}/>
+          <div style={{fontSize:11,color:"#4a5578",fontFamily:"monospace",letterSpacing:1}}>{wxStep}</div>
+        </div>
+      )}
+
+      {/* RESULTS */}
+      {wxResult && (
+        <div className="fade-up">
+
+          {/* BATCH ERROR */}
+          {wxResult.batchError && (
+            <div style={{background:"rgba(231,76,60,.12)",border:"1px solid #e74c3c",borderRadius:8,padding:"10px 13px",marginBottom:12,fontSize:11,color:"#e74c3c",fontFamily:"monospace",lineHeight:1.6}}>
+              <div style={{fontWeight:700,marginBottom:3}}>⚠️ Weather API Error:</div>
+              <div style={{wordBreak:"break-all"}}>{wxResult.batchError}</div>
+            </div>
+          )}
+
+          {/* OVERALL RECOMMENDATION */}
+          <div style={{background:`${wxResult.recColor}12`,border:`2px solid ${wxResult.recColor}50`,borderRadius:10,padding:"16px 14px",marginBottom:12,textAlign:"center"}}>
+            <div style={{fontSize:9,color:"#4a5578",letterSpacing:2,fontFamily:"monospace",marginBottom:4}}>{t.wxOverall}</div>
+            <div style={{fontSize:26,fontWeight:900,color:wxResult.recColor,letterSpacing:1,marginBottom:4}}>
+              {wxResult.recommendation===t.wxOK?'✅':wxResult.recommendation===t.wxCaution?'⚠️':'🚫'} {wxResult.recommendation}
+            </div>
+            <div style={{fontSize:11,color:"#6b7ea8"}}>
+              {t.wxGlobal} <strong style={{color:wxResult.recColor,fontSize:16}}>{wxResult.globalScore}</strong>/10 &nbsp;·&nbsp;
+              {wxResult.uniqueStates.join(' → ')} &nbsp;·&nbsp; {wxResult.wxDate}
+            </div>
+          </div>
+
+          {/* TOP RISKIEST SEGMENTS */}
+          {wxResult.topRisk.some(s=>(s.risk?.score||0)>0) && (
+            <div style={{background:"#0b0f1c",border:"1px solid #1e2438",borderRadius:8,padding:"12px 14px",marginBottom:12}}>
+              <div style={{fontSize:10,color:"#4a5578",letterSpacing:2,fontFamily:"monospace",marginBottom:8}}>{t.wxTopRisk}</div>
+              {wxResult.topRisk.filter(s=>(s.risk?.score||0)>0).map((s,i)=>(
+                <div key={i} style={{display:"flex",alignItems:"center",gap:10,padding:"6px 0",borderBottom:i<2?"1px solid #111827":"none"}}>
+                  <div style={{width:28,height:28,borderRadius:6,background:riskBg(s.risk?.score||0),border:`1px solid ${riskColor(s.risk?.score||0)}40`,display:"flex",alignItems:"center",justifyContent:"center",flexShrink:0}}>
+                    <span style={{fontSize:13,fontWeight:900,color:riskColor(s.risk?.score||0)}}>{s.risk?.score||0}</span>
+                  </div>
+                  <div style={{flex:1}}>
+                    <div style={{fontSize:12,fontWeight:600}}>{s.state} — {t.wxMile} {s.mile}</div>
+                    <div style={{fontSize:10,color:"#4a5578",fontFamily:"monospace"}}>{(s.risk?.reasons||[]).join(' · ')}</div>
+                  </div>
+                  <div style={{textAlign:"right",fontSize:10,color:"#4a5578",fontFamily:"monospace"}}>
+                    {s.forecast?`${s.forecast.tempMin}°F↓ ${s.forecast.tempMax}°F↑`:''}
+                  </div>
+                </div>
+              ))}
+            </div>
+          )}
+
+          {/* BY STATE TABLE */}
+          <div style={{fontSize:10,color:"#4a5578",letterSpacing:2,fontFamily:"monospace",marginBottom:8}}>{t.wxRiesgo}</div>
+          {wxResult.byState.map((st,i)=>(
+            <div key={i} style={{
+              background:riskBg(st.maxScore),
+              border:`1px solid ${riskColor(st.maxScore)}30`,
+              borderLeft:`3px solid ${riskColor(st.maxScore)}`,
+              borderRadius:8,padding:"11px 13px",marginBottom:7
+            }}>
+              <div style={{display:"flex",justifyContent:"space-between",alignItems:"flex-start",gap:8}}>
+                <div style={{flex:1}}>
+                  <div style={{display:"flex",alignItems:"center",gap:8,marginBottom:4,flexWrap:"wrap"}}>
+                    <span style={{fontSize:15,fontWeight:900,color:riskColor(st.maxScore)}}>{st.state}</span>
+                    <span style={{fontSize:9,color:"#4a5578",fontFamily:"monospace"}}>{st.milesRange}</span>
+                    {st.alerts?.length>0 && (
+                      <span style={{background:"rgba(231,76,60,.15)",color:"#e74c3c",fontSize:9,padding:"1px 6px",borderRadius:3,fontWeight:700}}>
+                        {st.alerts.length} {st.alerts.length>1?t.wxAlertS:t.wxAlerts}
+                      </span>
+                    )}
+                    <span style={{fontSize:9,color:"#3a4560",fontFamily:"monospace"}}>{st.dataCount}/{st.totalCount} {t.wxPts}</span>
+                  </div>
+
+                  {st.hasData ? (
+                    <>
+                      {st.condition && (
+                        <div style={{fontSize:12,fontWeight:600,color:"#c8d0e8",marginBottom:5}}>
+                          {st.conditionIcon} {st.condition}
+                          {st.description && <span style={{fontWeight:400,color:"#6b7ea8"}}> — {st.description}</span>}
+                        </div>
+                      )}
+                      <div style={{display:"flex",flexWrap:"wrap",gap:5,marginBottom:st.reasons.length>0?4:0}}>
+                        {[
+                          st.tempMin!==null && `🌡️ ${Math.round(st.tempMin)}°↓ ${Math.round(st.tempMax)}°↑F`,
+                          (st.snowfall??0)>0 && `❄️ ${st.snowfall?.toFixed(1)}" snow`,
+                          (st.windGusts??0)>0 && `💨 ${Math.round(st.windGusts)}mph gusts`,
+                          (st.precip??0)>0 && `🌧️ ${st.precip?.toFixed(2)}" rain`,
+                        ].filter(Boolean).map((tag,j)=>(
+                          <span key={j} style={{background:"#111827",color:"#8898b8",fontSize:9,padding:"2px 7px",borderRadius:20,fontFamily:"monospace"}}>{tag}</span>
+                        ))}
+                      </div>
+                      {st.reasons.length>0 && <div style={{fontSize:10,color:"#6b7ea8",lineHeight:1.5}}>{st.reasons.join(' · ')}</div>}
+                      {st.reasons.length===0 && <div style={{fontSize:10,color:"#2ecc71"}}>{t.wxNoRisk}</div>}
+                    </>
+                  ) : (
+                    <div style={{fontSize:10,color:"#e74c3c",fontFamily:"monospace"}}>{t.wxNoData}</div>
+                  )}
+
+                  {st.alerts?.length>0 && (
+                    <div style={{marginTop:5}}>
+                      {st.alerts.slice(0,2).map((a,j)=>(
+                        <div key={j} style={{fontSize:10,color:"#e74c3c",fontFamily:"monospace",lineHeight:1.4}}>
+                          ⚠️ {a.event}{a.severity?' ('+a.severity+')':''}
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                </div>
+                <div style={{textAlign:"center",flexShrink:0}}>
+                  <div style={{width:40,height:40,borderRadius:"50%",background:riskBg(st.maxScore),border:`2px solid ${riskColor(st.maxScore)}60`,display:"flex",alignItems:"center",justifyContent:"center"}}>
+                    <span style={{fontSize:16,fontWeight:900,color:riskColor(st.maxScore)}}>{st.maxScore}</span>
+                  </div>
+                  <div style={{fontSize:8,color:"#4a5578",marginTop:2,fontFamily:"monospace"}}>RISK</div>
+                </div>
+              </div>
+            </div>
+          ))}
+
+          {/* LEGEND */}
+          <div style={{background:"#0b0f1c",border:"1px solid #1e2438",borderRadius:8,padding:"10px 13px",marginTop:4}}>
+            <div style={{fontSize:9,color:"#3a4560",fontFamily:"monospace",letterSpacing:1,marginBottom:6}}>{t.wxLegend}</div>
+            <div style={{display:"flex",gap:10,flexWrap:"wrap"}}>
+              {[["0–2",`🟢 ${t.wxLegendOK}`,"#2ecc71"],["3–4",`🟡 ${t.wxLegendMon}`,"#f0c040"],["5–6",`🟠 ${t.wxLegendCau}`,"#f39c12"],["7–10",`🔴 ${t.wxLegendAvo}`,"#e74c3c"]].map(([range,label,color])=>(
+                <div key={range} style={{display:"flex",alignItems:"center",gap:5}}>
+                  <div style={{width:8,height:8,borderRadius:"50%",background:color}}/>
+                  <span style={{fontSize:10,color:"#6b7ea8"}}>{range} {label}</span>
+                </div>
+              ))}
+            </div>
+          </div>
+
+          <div style={{fontSize:9,color:"#3a4560",fontFamily:"monospace",textAlign:"center",marginTop:8,lineHeight:1.6}}>
+            {t.wxFooter(`${wxResult.samplesWithData}/${wxResult.samples.length}`)}<br/>
+            {wxResult.uniqueStates.join(' → ')}
+          </div>
+        </div>
+      )}
+
+      {/* ─── REST AREAS PANEL ─── */}
+      {(restAreas !== null || restLoading) && (
+        <div className="fade-up" style={{marginTop:12}}>
+          <div style={{display:"flex",alignItems:"center",gap:8,margin:"20px 0 10px"}}>
+            <div style={{width:3,height:18,background:"#f39c12",borderRadius:2}}/>
+            <span style={{fontSize:13,fontWeight:800,letterSpacing:.5,color:"#f9c74f"}}>{t.sectionRest}</span>
+            <div style={{flex:1,height:1,background:"#1a2035"}}/>
+            <span style={{fontSize:9,color:"#3a4560",fontFamily:"monospace"}}>CLAUDE AI</span>
+          </div>
+
+          {restLoading && (
+            <div style={{background:"#0b0f1c",border:"1px solid #1e2438",borderRadius:8,padding:"14px",textAlign:"center"}}>
+              <div style={{width:24,height:24,border:"2px solid #1e2438",borderTop:"2px solid #f39c12",borderRadius:"50%",animation:"spin .8s linear infinite",margin:"0 auto 8px"}}/>
+              <div style={{fontSize:10,color:"#4a5578",fontFamily:"monospace"}}>{t.restLoading}</div>
+            </div>
+          )}
+
+          {!restLoading && restAreas && restAreas.length === 0 && (
+            <div style={{background:"#0b0f1c",border:"1px solid #1e2438",borderRadius:8,padding:"12px",fontSize:11,color:"#4a5578",textAlign:"center"}}>{t.restNone}</div>
+          )}
+
+          {!restLoading && restAreas && restAreas.length > 0 && (
+            <>
+              {/* Summary badges */}
+              <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:8,marginBottom:10}}>
+                {[
+                  restAreas.find(a=>a.badgeClosestDest),
+                  restAreas.find(a=>a.badgeClosestRoute),
+                ].map((area, idx) => area ? (
+                  <div key={idx} style={{background:"#0b0f1c",border:`1px solid ${idx===0?"#f39c1244":"#3b82f644"}`,borderTop:`2px solid ${idx===0?"#f39c12":"#3b82f6"}`,borderRadius:8,padding:"10px 11px"}}>
+                    <div style={{fontSize:9,fontWeight:800,color:idx===0?"#f39c12":"#3b82f6",letterSpacing:1.5,marginBottom:4}}>
+                      {idx===0?t.restClosestDest:t.restClosestRoute}
+                    </div>
+                    <div style={{fontSize:12,fontWeight:700,marginBottom:3,lineHeight:1.3}}>{area.name}</div>
+                    <div style={{fontSize:9,fontFamily:"monospace",color:"#4a5578",lineHeight:1.7}}>
+                      {idx===0
+                        ? `📍 ${area.distToDest} ${t.restMiFromDest}`
+                        : `🛣️ ${area.offsetToRoute} ${t.restOffRoute}`}
+                    </div>
+                    {area.amenities.length>0&&(
+                      <div style={{fontSize:9,color:"#5080a0",marginTop:4,lineHeight:1.6}}>{area.amenities.slice(0,3).join('  ')}</div>
+                    )}
+                  </div>
+                ) : <div key={idx}/>)}
+              </div>
+
+              {/* Full list */}
+              {restAreas.slice(0, 10).map((area, i) => (
+                <div key={i} style={{background:"#0b0f1c",border:"1px solid #1e2438",borderRadius:7,padding:"9px 12px",marginBottom:6,display:"flex",alignItems:"flex-start",gap:10}}>
+                  <div style={{flex:1}}>
+                    <div style={{display:"flex",alignItems:"center",gap:6,flexWrap:"wrap",marginBottom:2}}>
+                      <span style={{fontSize:12,fontWeight:700}}>{area.name}</span>
+                      {area.state && <span style={{fontSize:9,color:"#4a5578",fontFamily:"monospace"}}>{area.state}</span>}
+                      {area.badgeClosestDest && <span style={{background:"rgba(243,156,18,.15)",color:"#f39c12",fontSize:8,padding:"1px 5px",borderRadius:3,fontWeight:700}}>📍 NEAR DEST</span>}
+                      {area.badgeClosestRoute && <span style={{background:"rgba(59,130,246,.15)",color:"#3b82f6",fontSize:8,padding:"1px 5px",borderRadius:3,fontWeight:700}}>🛣️ ON ROUTE</span>}
+                    </div>
+                    {(area.highway||area.side) && (
+                      <div style={{fontSize:9,fontFamily:"monospace",color:"#3b82f6",marginBottom:2}}>
+                        {area.highway}{area.side?' · '+area.side+' side':''}
+                      </div>
+                    )}
+                    <div style={{fontSize:9,fontFamily:"monospace",color:"#4a5578",lineHeight:1.6}}>
+                      ~{area.distToDest}mi {t.restMiFromDest}
+                    </div>
+                    {area.amenities.length>0 && (
+                      <div style={{fontSize:10,color:"#5080a0",marginTop:3,lineHeight:1.7}}>{area.amenities.join('  ')}</div>
+                    )}
+                  </div>
+                </div>
+              ))}
+
+              {restAreas.length > 10 && (
+                <div style={{fontSize:10,color:"#3a4560",fontFamily:"monospace",textAlign:"center",padding:"6px 0"}}>
+                  +{restAreas.length - 10} more
+                </div>
+              )}
+            </>
+          )}
+        </div>
+      )}
+      </>)}{/* end weather tab */}
+    </div>
+  );
+}
+
+class ErrorBoundary extends React.Component {
+  constructor(props){ super(props); this.state={err:null}; }
+  static getDerivedStateFromError(e){ return {err:e}; }
+  render(){
+    if(this.state.err) return (
+      <div style={{padding:20,color:'#e74c3c',fontFamily:'monospace',fontSize:12,background:'#080c14',minHeight:'100vh'}}>
+        <div style={{color:'#f0c040',fontWeight:700,marginBottom:8}}>⚠️ VanRate Pro — Error de inicialización:</div>
+        <div style={{wordBreak:'break-all'}}>{this.state.err.message}</div>
+        <div style={{marginTop:12,color:'#4a5578'}}>Recarga la página para intentar de nuevo.</div>
+      </div>
+    );
+    return this.props.children;
+  }
+}
+
+ReactDOM.createRoot(document.getElementById("root")).render(
+  <ErrorBoundary><App/></ErrorBoundary>
+);
+</script>
+<script>
+// Service Worker registration
+if ('serviceWorker' in navigator) {
+  window.addEventListener('load', () => {
+    navigator.serviceWorker.register('./sw.js').catch(()=>{});
+  });
+}
+
+// PWA Install prompt
+let deferredInstallPrompt = null;
+window.addEventListener('beforeinstallprompt', (e) => {
+  e.preventDefault();
+  deferredInstallPrompt = e;
+  // Show install banner
+  const banner = document.getElementById('pwa-install-banner');
+  if (banner) banner.style.display = 'flex';
+});
+
+window.addEventListener('appinstalled', () => {
+  const banner = document.getElementById('pwa-install-banner');
+  if (banner) banner.style.display = 'none';
+  deferredInstallPrompt = null;
+});
+
+function triggerInstall() {
+  if (deferredInstallPrompt) {
+    deferredInstallPrompt.prompt();
+    deferredInstallPrompt.userChoice.then(() => {
+      deferredInstallPrompt = null;
+      const banner = document.getElementById('pwa-install-banner');
+      if (banner) banner.style.display = 'none';
+    });
+  }
+}
+</script>
+
+<!-- PWA Install Banner -->
+<div id="pwa-install-banner" style="display:none;position:fixed;bottom:0;left:0;right:0;z-index:9999;background:linear-gradient(135deg,#0e1628,#1a2848);border-top:2px solid #f0c040;padding:12px 16px;align-items:center;justify-content:space-between;gap:12px;box-shadow:0 -4px 20px rgba(0,0,0,.5);">
+  <div style="display:flex;align-items:center;gap:10px;">
+    <span style="font-size:22px">🚐</span>
+    <div>
+      <div style="font-size:13px;font-weight:800;color:#f0c040;">Instalar VanRate Pro</div>
+      <div style="font-size:10px;color:#4a6080;">Agregar al escritorio como app</div>
+    </div>
+  </div>
+  <div style="display:flex;gap:8px;flex-shrink:0;">
+    <button onclick="triggerInstall()" style="background:#f0c040;color:#000;border:none;border-radius:8px;padding:9px 16px;font-weight:800;font-size:12px;cursor:pointer;">Instalar</button>
+    <button onclick="document.getElementById('pwa-install-banner').style.display='none'" style="background:transparent;color:#4a6080;border:1px solid #2a3450;border-radius:8px;padding:9px 12px;font-size:11px;cursor:pointer;">✕</button>
+  </div>
+</div>
+</body>
+</html>
